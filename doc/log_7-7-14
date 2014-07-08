@@ -1,0 +1,44 @@
+Baxter connection and configuration
+===================================
+We started by following the instructions on the Rethink Robotics sdk-docs repo:
+https://github.com/RethinkRobotics/sdk-docs/wiki/Connecting-and-Testing-the-Development-Workstation
+
+We connected Baxter and the workspace machine by an ethernet switch. To find the hostname of the robot, we connected to the Field Service Menu by connecting a keyboard to Baxter and pressing Alt-F during boot. After finding the hostname in the FSM, we pinged the hostname from the workspace machine to get the IP address of the robot. We then set the robot as ROS_MASTER_URI by using the IP address and the correct port (11311).
+
+We then updated Baxter from version 0.7.0 to 1.0.0 using the instructions on the Rethink Robotics wiki:
+http://sdk.rethinkrobotics.com/wiki/Software_Update_-_v1.0.0
+
+We downloaded the update files from the Rethink FTP, extracted the archive, copied all of the extracted files to a blank USB drive, and plugged the USB drive into Baxter. We ran rosrun baxter_tools update_robot.py to get the UUID of the update and to install the update.
+
+Then we installed the RSDK onto the workspace machine:
+https://github.com/RethinkRobotics/sdk-docs/wiki/Installing-the-Research-SDK
+
+The terminal commands necessary for this step are self-explanatory, but the important step is editing the baxter.sh file in <workspace dir>/src/baxter/ to change baxter_hostname to the appropriate value, and set EITHER your_ip or your_hostname to the correct value for the workspace machine. (Note that you cannot set both.) You may need to append .local to baxter_hostname, especially on Ubuntu.
+
+We then ran some of the example programs from this page:
+https://github.com/RethinkRobotics/sdk-docs/wiki/Example-Programs
+
+If an example program does not seem to work, make sure to source your ROS setup script and run the Baxter setup script. You'll need to do this whenever you open a new terminal.
+source /opt/ros/<your ros version/setup.bash
+./<baxter workspace dir>/baxter.sh
+
+TODO
+====
+We still have yet to play around with the pneumatic gripper or the visual sensors.
+
+We have two ideas for Baxter demos that would be easy to implement given the existing examples.
+
+1. Repetitive endpoints example. Given two points in Baxter's kinematic space, solve for a trajectory between them and repetitively move back and forth between those points. The interface for inputting those points should be a human moving Baxter's arm.
+
+The joint trajectory action interface will command a trajectory with goal points:
+https://github.com/RethinkRobotics/sdk-docs/wiki/Simple-Joint-trajectory-example
+
+Don't know how to set up the interface for receiving points. Maybe use the buttons on the wrist? Aren't those supposed to be for opening and closing the gripper?
+
+2. Command the position of the end effector using the joystick. Several of the example programs on the Rethink repo allow for controlling the robot arm with a joystick in a forward-kinematics fashion: the joystick buttons command individual joint values. We want to put together a program that allows for direct command of the end effector using the joystick and solves for the requisite joint angles using Jacobian kinematics. The goal is to create an interface that is more intuitive and elegant than the existing controller interfaces.
+
+The Joint Position Example will provide code to interface with the joystick:
+https://github.com/RethinkRobotics/sdk-docs/wiki/Joint%20Position%20Example
+
+Baxter PyKDL will solve for Jacobians, Jacobian transposes, and Jacobian pseudoinverses:
+http://sdk.rethinkrobotics.com/wiki/Baxter_PyKDL

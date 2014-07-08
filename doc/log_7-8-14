@@ -1,0 +1,5 @@
+Today I got the end effector controller script working (ee_position_keyboard.py). However, the hand does not seem to move exactly in the coordinate frame we want it to move in.
+
+To that end, it would be useful to simulate Baxter in Gazebo to see if my code is flawed or if Baxter's sensors are off. However, I don't have access to the baxter_simulator repo that will allow me to get Baxter working in GGazebo, so unfortunately we'll have to wait.
+
+Meanwhile I am going to brainstorm ideas for more demos and start implementing the other demo idea from yesterday.
