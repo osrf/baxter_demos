@@ -88,7 +88,7 @@ def map_keyboard():
         limb.set_joint_positions(joint_command)
 
     zeros = [0]*3
-    inc = 0.07
+    inc = 0.25
     bindings = {
         'q': (command_jacobian, ['right', [inc, 0, 0]+zeros], "increase right x"),
         'a': (command_jacobian, ['right', [-inc, 0, 0]+zeros], "decrease right x"),

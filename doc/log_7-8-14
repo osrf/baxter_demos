@@ -1,5 +1,9 @@
-Today I got the end effector controller script working (ee_position_keyboard.py). However, the hand does not seem to move exactly in the coordinate frame we want it to move in.
+Today I got the end effector controller script working (ee_position_keyboard.py). However, the hand does not seem to move exactly in the coordinate frame we want it to move in. This may be due to mathematical issues or simply the kinematic constraints of the robot.
 
-To that end, it would be useful to simulate Baxter in Gazebo to see if my code is flawed or if Baxter's sensors are off. However, I don't have access to the baxter_simulator repo that will allow me to get Baxter working in GGazebo, so unfortunately we'll have to wait.
+It might also be useful to re-implement ee_position_keyboard using the Inverse Kinematics service rather than using the Jacobian inverse.
 
-Meanwhile I am going to brainstorm ideas for more demos and start implementing the other demo idea from yesterday.
+The folks at Rethink shared the baxter-simulator repo with us, so I am now able to simulate Baxter in Gazebo. I need to adjust the damping on the robot's arms for the simulation to match reality, but it's definitely a useful tool.
+
+Got a new gamepad and started implementing an ee_position_joystick program. I need to create a rospackage so that I can run the script with a joystick launchfile, otherwise it does not work.
+
+I also started implementing a point_trajectory_input.py script, which will take desired goal positions from the user and run a trajectory between those points. In order to create a user interface, I figured out how to display images to the screen (easy) and am now working on getting button presses from the user.
