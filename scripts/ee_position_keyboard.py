@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """Baxter End Effector Controller Demo by Jackie Kay
 Based on the Baxter RSDK Joint Position Example
 
