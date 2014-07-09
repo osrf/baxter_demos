@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+#Remember to run the joint trajectory action server:
+#$ rosrun baxter_interface joint_trajectory_action_server.py 
+
 import argparse
 import sys
 import os
@@ -32,18 +35,16 @@ from sensor_msgs.msg import (
     Image,
 )
 
-from baxter_common import DigitalIOState
-
+from baxter_core_msgs.msg import DigitalIOState
 from std_msgs.msg import Int8
 
 class ButtonListener:
     def subscribe(self):
-        rospy.Subscriber("/robot/digital_io/right_lower_button/state", , self.button_callback)
+        rospy.Subscriber("/robot/digital_io/right_lower_button/state", DigitalIOState, self.button_callback)
         self.pressed = False
 
     def button_callback(self, data):
-        print "Got data in callback:", data
-        if data == 1:
+        if data.state == 1:
             self.pressed = True
         
 def send_image(path):
@@ -63,6 +64,7 @@ def send_image(path):
 
 class Trajectory(object):
     def __init__(self, limb):
+        self.waiting = False
         self.jointnames = ['s0', 's1', 'e0', 'e1', 'w0', 'w1', 'w2']
         ns = 'robot/limb/' + limb + '/'
         self._client = actionlib.SimpleActionClient(
@@ -93,7 +95,9 @@ class Trajectory(object):
         self._client.cancel_goal()
 
     def wait(self, timeout=15.0):
+        self.waiting = True
         self._client.wait_for_result(timeout=rospy.Duration(timeout))
+        self.waiting = False
 
     def result(self):
         return self._client.get_result()
@@ -141,42 +145,50 @@ def main():
     traj = Trajectory(limb)
     rospy.on_shutdown(traj.stop)
 
-    filenames = ["assets/getpoint1.png", "assets/getpoint2.png"]
+    filenames = ["assets/getpoint1.png", "assets/getpoint2.png", "assets/executing.png"] #TODO: rosparam this
     for filename in filenames:
         if not os.access(filename, os.R_OK):
             rospy.logerr("Cannot read file at '%s'" % (filename,))
             return 1
 
-    def getButtonPress():
-        buttonpress = ButtonListener()
-        buttonpress.subscribe()
-        
+    limbInterface = baxter_interface.Limb(limb)
+
+    def getButtonPress(buttonpress):
         while not buttonpress.pressed:
-            rospy.sleep(1)
+            rospy.sleep(0.5)
 
         #Get points from user
-        jointdict = limb.joint_angles
-        return [jointdict[name] for name in traj.jointnames]
+        jointdict = limbInterface.joint_angles()
+        print jointdict
+        return [jointdict[limb+"_"+name] for name in traj.jointnames]
     
     send_image(filenames[0])
     #Get the current position
-    p1 = getButtonPress()
+    buttonpress = ButtonListener()
+    buttonpress.subscribe()
+    points = []
+    points.append( getButtonPress(buttonpress))
     print "Got first position:"
-    print p1
+    print points[0]
+
+    buttonpress.pressed = False
 
     send_image(filenames[1])
-    p2 = getButtonPress()
+    points.append( getButtonPress(buttonpress))
+    print "Got second position:"
+    print points[1]
 
+    send_image(filenames[2])
     print("Running. Ctrl-c to quit")
 
     i = 0
-    while True:
-        traj.add_point(p1, 7.0) #TODO: better time check
-        traj.add_point(p2, 7.0)
-        #traj.add_point([x * 0.75 for x in p1], 9.0)
-        #traj.add_point([x * 1.25 for x in p1], 12.0)
+    while i < 1000 and not rospy.is_shutdown():
+        #Make sure the points alternate
+        traj.add_point(points[i%2], 15.0)
+        traj.add_point(points[(i+1)%2], 15.0)
         traj.start()
-        traj.wait(15.0) #TODO: more sophisticated check for completion
+        traj.wait()
+        traj.clear(limb)
         print "Completed test", i
         i+=1
 
