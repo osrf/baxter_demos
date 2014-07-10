@@ -1,12 +1,23 @@
-Goals:
-Review open source Baxter code from Github and try to run
+I got the joystick controller program working to the same level of functionality as the keyboard counterpart. I suspect something strange is still happening with the coordinate frame and/or the speed, but we decided to come back to the program at a later date to polish it off while I play around with more Baxter features.
 
-I got the joystick controller program working to the same level of functionality as the keyboard counterpart. I suspect something strange is still happening with the coordinate frame, but we decided to come back to the program at a later date to polish it off while I play around with more Baxter features.
-
+Trajectory repeater with user-inputted goal states
+==================================================
 I finished point_trajectory_input.py, which is a program that outputs instructions to the user using Baxter's head screen and gets as input from the user two desired joint configurations (by receiving button presses on its wrist cuff button). It then calculates a trajectory between the desired configurations and executes it 1000 times or until the user presses Ctrl-C.
 
-After running the first version of the program, the hand jerked very suddenly whenever it gets to the desired position, which was not desirable. It probably has to do with requesting that the end effector come to a complete stop at the desired position. I slowed down the movement of the hand by doubling the requested time for the trajectory, but now it moves at an incredibly slow speed. Some more sophisticated trajectory generation would be worth looking into, but I suspect this is something that I could complete when I start delving more deeply into getting a working demo.
+After running the first version of the program, the hand jerked very suddenly whenever it gets to the desired position, which was not desirable. It probably has to do with requesting that the end effector come to a complete stop at the desired position. I slowed down the movement of the hand by doubling the requested time for the trajectory, but now it moves at an incredibly slow speed. Some more sophisticated trajectory generation would be worth looking into, but I suspect this is something that I could complete when I start delving more deeply into specific goals.
 
-It might also be worthwhile to think about obstacle avoidance, and getting as input the end effector position, then figuring out a trajectory that's constrained by the end effector and not the 7 desired joint angles.
+I was thinking of reimplementing this idea with the end effector position (and maybe not even orientation) as the input. Then the program would figure out a trajectory that's constrained by the end effector and not the 7 desired joint angles. It's also worthwhile to think about implementing this idea with obstacle avoidance, but that's a pretty sophisticated problem for a 7-DOF arm...
 
+A small bug in this program is that the joint trajectory action server sometimes prevents other programs from sending commands to the robot, which is annoying if you're trying to teleop the arm into a new position.
 
+Code Search
+===========
+Most of the code I found was decayed beyond recognition (using old versions of ROS or libraries that were poorly documented, hardcoded path names, etc.) or even unfinished ("np.arra" instead of "np.array").
+
+baxter_image_recognition is promising.
+organizer-baxter (or just organizer) looks like it could work really well except my workstation doesn't know about a module called "iodevices".
+nxr-baxter sounds like a really cool demo but the code is a total mess. It might be most productive to cannibalize the key code snippets into something usable.
+umass-baxter is a year old and thus I have to run it using groovy or even electric.
+Dave Coleman's code theoretically has some cool obstacle avoidance demos but I could not get it to work due to version incompatibility.
+
+Maybe I will see if I can set up a Groovy workspace and see if that helps. Otherwise I will isolate some things I would really like to see (obstacle avoidance, object recognition, picking up objects) and try to make working demos out of the code snippets that I have.
