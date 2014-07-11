@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Baxter End Effector Controller Demo by Jackie Kay
+"""Baxter End Effector Controller Demo by Jackie Kay (jackie@osrfoundation.org)
 Based on the Baxter RSDK Joint Position Example
 
 Command the (x, y, z) position of the end effector using the joystick. Uses

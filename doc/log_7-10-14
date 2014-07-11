@@ -1,0 +1,7 @@
+I want to collect some object recognition routines and run a simple object tracking demo. The user will select an object recognition method, click on the object in Baxter's hand camera feed on the workstation, and then Baxter will track the object, trying to keep the camera centered on the centroid of the object. Hopefully writing a routine to pick up the object will not be too difficult after this is figured out.
+
+The following object recognition methods will be implemented:
+Color segmentation: click on a point, show processed image to user and confirm
+openCV.findContours (maybe not great idea) or edge detection, user selects blob
+Corner detection, user selects corners of object? 
+If time permits: ML feature detection technique
