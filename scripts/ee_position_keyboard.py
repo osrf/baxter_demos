@@ -11,6 +11,7 @@ Jacobian kinematics to determine required joint angles.
 # robot frame
 
 import argparse
+import struct
 import rospy
 import tf
 
@@ -25,6 +26,18 @@ from operator import add
 
 import numpy as np
 from math import atan2, asin
+
+from geometry_msgs.msg import (
+    PoseStamped,
+    Pose,
+    Point,
+    Quaternion,
+)
+from std_msgs.msg import Header
+from baxter_core_msgs.srv import (
+    SolvePositionIK,
+    SolvePositionIKRequest,
+)
 
 # Convert the last 4 entries in q from quaternion form to Euler Angle form and copy into p
 # Expect a 7x1 column vector and a preallocated 6x1 column vector (numpy)
@@ -45,7 +58,13 @@ def map_keyboard():
     #These are from PyKDL and are needed for the Jacobian
     left_kin = baxter_kinematics('left')
     right_kin = baxter_kinematics('right')
- 
+
+    #Connect with IK service
+    right_ns = "ExternalTools/right/PositionKinematicsNode/IKService"
+    right_iksvc = rospy.ServiceProxy(right_ns, SolvePositionIK)
+    left_ns = "ExternalTools/left/PositionKinematicsNode/IKService"
+    left_iksvc = rospy.ServiceProxy(left_ns, SolvePositionIK)
+
     def command_jacobian(side, direction):
         if side == 'left':
             limb = left
@@ -58,21 +77,21 @@ def map_keyboard():
 
         # current is the current position of end effector
         # We need to reshape it from quaternion to Euler Angle
-        current_q = np.array(limb.endpoint_pose()['position']+limb.endpoint_pose()['orientation']) 
-        current_q = current_q.reshape((7, 1))
+        current_p = np.array(limb.endpoint_pose()['position']+limb.endpoint_pose()['orientation']) 
+        current_p = current_q.reshape((7, 1))
         current = np.zeros((6, 1))
-        quaternion_to_euler(current_q, current)
+        quaternion_to_euler(current_p, current)
 
         # We need to convert the direction from the world frame to the hand frame
         # Rotate direction by the inverse of the rotation matrix from the angular pose in current
-        R = tf.transformations.quaternion_matrix(current_q[3:7].flatten().tolist())
+        R = tf.transformations.quaternion_matrix(current_p[3:7].flatten().tolist())
         R_inv = tf.transformations.inverse_matrix(R)
         print R_inv[0:3, 0:3]
         direction = np.array(direction).reshape((6, 1))
         print direction[0:3]
         dir_rot = np.dot(R_inv[0:3, 0:3], direction[0:3])
         print dir_rot
-        direction[0:3] = dir_rot
+        #direction[0:3] = dir_rot
 
         # Goal is the goal position, found by adding the requested direction from the user
         goal = current + direction
@@ -88,21 +107,64 @@ def map_keyboard():
         joint_command = dict(zip(limb.joint_names(), command_list[0]))
         limb.set_joint_positions(joint_command)
 
-    zeros = [0]*3
-    inc = 0.25
+    def command_ik(side, direction):
+        """Use the Rethink IK service to figure out a desired joint position
+           This is way too slow to use in realtime. Unless I figure out why the
+           IK service takes minutes to respond, not going to use it."""
+        if side == 'left':
+            limb = left
+            iksvc = left_iksvc
+            ns = left_ns
+        else:
+            limb = right
+            iksvc = right_iksvc
+            ns = right_ns
+        current_p = np.array(limb.endpoint_pose()['position']+limb.endpoint_pose()['orientation']) 
+        direction = np.array(direction)
+        desired_p = current_p + direction
+        ikreq = SolvePositionIKRequest()
+        hdr = Header(stamp=rospy.Time.now(), frame_id='base')
+        pose = { side : PoseStamped(
+                    header = hdr,
+                    pose = Pose(position=Point(x=desired_p[0], y=desired_p[1], z=desired_p[2]),
+                    orientation = Quaternion(x=desired_p[3], y=desired_p[4], z=desired_p[5], w=desired_p[6]))
+                ) }
+
+        ikreq.pose_stamp.append(pose[side])
+        try:
+            rospy.wait_for_service(ns, 5.0)
+            resp = iksvc(ikreq)
+        except (rospy.ServiceException, rospy.ROSException), e:
+            rospy.logerr("Service call failed: %s" % (e,))
+            return
+        resp_seeds = struct.unpack('<%dB' % len(resp.result_type),
+                                   resp.result_type)
+        if (resp_seeds[0] != resp.RESULT_INVALID):
+            limb_joints = dict(zip(resp.joints[0].name, resp.joints[0].position))
+            limb.set_joint_positions(limb_joints)
+        else:
+            #How to recover from this
+            print "Invalid position requested"
+            return
+
+        
+
+    zeros = [0]*4
+    inc = 0.1
+
     bindings = {
-        'q': (command_jacobian, ['right', [inc, 0, 0]+zeros], "increase right x"),
-        'a': (command_jacobian, ['right', [-inc, 0, 0]+zeros], "decrease right x"),
-        'w': (command_jacobian, ['right', [0, inc, 0]+zeros], "increase right y"),
-        's': (command_jacobian, ['right', [0, -inc, 0]+zeros], "decrease right y"),
-        'e': (command_jacobian, ['right', [0, 0, inc]+zeros], "increase right z"),
-        'd': (command_jacobian, ['right', [0, 0, -inc]+zeros], "decrease right z"),
-        'u': (command_jacobian, ['left', [inc, 0, 0]+zeros],  "increase left x"),
-        'j': (command_jacobian, ['left', [-inc, 0, 0]+zeros], "decrease left x"),
-        'i': (command_jacobian, ['left', [0, inc, 0]+zeros],  "increase left y"),
-        'k': (command_jacobian, ['left', [0, -inc, 0]+zeros], "decrease left y"),
-        'o': (command_jacobian, ['left', [0, 0, inc]+zeros],  "increase left z"),
-        'l': (command_jacobian, ['left', [0, 0, -inc]+zeros], "decrease left z"),
+        'q': (command_ik, ['right', [inc, 0, 0]+zeros], "increase right x"),
+        'a': (command_ik, ['right', [-inc, 0, 0]+zeros], "decrease right x"),
+        'w': (command_ik, ['right', [0, inc, 0]+zeros], "increase right y"),
+        's': (command_ik, ['right', [0, -inc, 0]+zeros], "decrease right y"),
+        'e': (command_ik, ['right', [0, 0, inc]+zeros], "increase right z"),
+        'd': (command_ik, ['right', [0, 0, -inc]+zeros], "decrease right z"),
+        'u': (command_ik, ['left', [inc, 0, 0]+zeros],  "increase left x"),
+        'j': (command_ik, ['left', [-inc, 0, 0]+zeros], "decrease left x"),
+        'i': (command_ik, ['left', [0, inc, 0]+zeros],  "increase left y"),
+        'k': (command_ik, ['left', [0, -inc, 0]+zeros], "decrease left y"),
+        'o': (command_ik, ['left', [0, 0, inc]+zeros],  "increase left z"),
+        'l': (command_ik, ['left', [0, 0, -inc]+zeros], "decrease left z"),
         'z': (grip_right.close, [], "right: gripper close"), 
         'x': (grip_right.open, [], "right: gripper open"),
         'c': (grip_right.calibrate, [], "right: gripper calibrate")
