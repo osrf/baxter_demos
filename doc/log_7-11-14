@@ -1,0 +1,17 @@
+I fixed the end effector teleop programs by using the IK service instead of directly applying the Jacobian. Teleoperation works quite well now; the hand moves recognizably in the axes of the base frame, but there's no way to command orientation and the robot tries to maintain the same orientation throughout. There is also orientation error that propagates, so the gripper ends up having an unexpected orientation after operating the end effector for a while.
+
+Baxter ssh:
+ssh ruser@<Baxter hostname>
+Password: rethink
+
+We brainstormed a bunch for the long-term goals of my project and broke it up into tasks. I am going to dedicate this next week to thinking about vision.
+
+It turns out that Canny edge detection works pretty well for identifying rectangular objects, but probably will not work well as a robust object tracker.
+
+Carlos suggested:
+Use HSI (Hue, Saturation, Intensity) space for color segmentation
+Use the infrared cameras on the hands (!!!)
+Use a general segmentation algorithm to recognize all objects on the table
+Knowing that all objects are in the same plane is helpful, you might even be able to measure the height of the table
+
+

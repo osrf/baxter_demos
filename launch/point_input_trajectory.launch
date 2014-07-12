@@ -1,0 +1,11 @@
+<launch>
+  <!--Replace this with the path to your baxter_demos repo, make sure it ends in /-->
+  <arg name="img_folder" default="/home/jackie/ros_ws/src/baxter_demos/assets/"/>
+
+  <arg name="limb" default="right"/>
+
+  <node name="point_input_trajectory" pkg="baxter_demos"
+  type="point_input_trajectory.py" args="-l $(arg limb) -f $(arg img_folder)"
+  output="screen" />
+
+</launch>

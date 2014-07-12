@@ -15,6 +15,8 @@ import struct
 import rospy
 import tf
 
+import ik_command 
+
 import baxter_interface
 import baxter_external_devices
 
@@ -27,17 +29,6 @@ from operator import add
 import numpy as np
 from math import atan2, asin
 
-from geometry_msgs.msg import (
-    PoseStamped,
-    Pose,
-    Point,
-    Quaternion,
-)
-from std_msgs.msg import Header
-from baxter_core_msgs.srv import (
-    SolvePositionIK,
-    SolvePositionIKRequest,
-)
 
 # Convert the last 4 entries in q from quaternion form to Euler Angle form and copy into p
 # Expect a 7x1 column vector and a preallocated 6x1 column vector (numpy)
@@ -60,10 +51,8 @@ def map_keyboard():
     right_kin = baxter_kinematics('right')
 
     #Connect with IK service
-    right_ns = "ExternalTools/right/PositionKinematicsNode/IKService"
-    right_iksvc = rospy.ServiceProxy(right_ns, SolvePositionIK)
-    left_ns = "ExternalTools/left/PositionKinematicsNode/IKService"
-    left_iksvc = rospy.ServiceProxy(left_ns, SolvePositionIK)
+    right_iksvc, right_ns = ik_command.connect_service('right')
+    left_iksvc, left_ns = ik_command.connect_service('left')
 
     def command_jacobian(side, direction):
         if side == 'left':
@@ -76,7 +65,6 @@ def map_keyboard():
             raise Exception("Got wrong side in command_jacobian")
 
         # current is the current position of end effector
-        # We need to reshape it from quaternion to Euler Angle
         current_p = np.array(limb.endpoint_pose()['position']+limb.endpoint_pose()['orientation']) 
         current_p = current_q.reshape((7, 1))
         current = np.zeros((6, 1))
@@ -122,32 +110,7 @@ def map_keyboard():
         current_p = np.array(limb.endpoint_pose()['position']+limb.endpoint_pose()['orientation']) 
         direction = np.array(direction)
         desired_p = current_p + direction
-        ikreq = SolvePositionIKRequest()
-        hdr = Header(stamp=rospy.Time.now(), frame_id='base')
-        pose = { side : PoseStamped(
-                    header = hdr,
-                    pose = Pose(position=Point(x=desired_p[0], y=desired_p[1], z=desired_p[2]),
-                    orientation = Quaternion(x=desired_p[3], y=desired_p[4], z=desired_p[5], w=desired_p[6]))
-                ) }
-
-        ikreq.pose_stamp.append(pose[side])
-        try:
-            rospy.wait_for_service(ns, 5.0)
-            resp = iksvc(ikreq)
-        except (rospy.ServiceException, rospy.ROSException), e:
-            rospy.logerr("Service call failed: %s" % (e,))
-            return
-        resp_seeds = struct.unpack('<%dB' % len(resp.result_type),
-                                   resp.result_type)
-        if (resp_seeds[0] != resp.RESULT_INVALID):
-            limb_joints = dict(zip(resp.joints[0].name, resp.joints[0].position))
-            limb.set_joint_positions(limb_joints)
-        else:
-            #How to recover from this
-            print "Invalid position requested"
-            return
-
-        
+        ik_command.service_request(iksvc, desired_p, side)
 
     zeros = [0]*4
     inc = 0.1
@@ -214,8 +177,6 @@ See help inside the example with the '?' key for key bindings.
     print("Getting robot state... ")
     rs = baxter_interface.RobotEnable(CHECK_VERSION)
     init_state = rs.state().enabled
-
-
 
     def clean_shutdown():
         print("\nExiting example...")

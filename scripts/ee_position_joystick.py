@@ -4,11 +4,10 @@ Based on the Baxter RSDK Joint Position Example
 
 Command the (x, y, z) position of the end effector using the joystick. Uses
 Jacobian kinematics to determine required joint angles. 
+
 """
 
-# TODO:
-# figure out coordinate frame and rotational frame: convert increment from world frame to
-# robot frame
+# TODO: refactor to use ik_command.py
 
 import argparse
 import rospy
