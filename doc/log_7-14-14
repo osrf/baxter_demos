@@ -1,0 +1,53 @@
+This week is vision week. I'll be thinking primarily about object recognition and mapping between camera scale and robot scale.
+
+Green screen approach to object recognition:
+First, we might want to put a tablecloth down on Baxter's workspace table.
+Take a picture from Baxter's hand over the workspace.
+Subtract the background image out of Baxter's camera feed.
+Account for zoom/pan in some intelligent way (maybe zoom in/out and pan around the image)
+Recognize anything that wasn't in the original workspace image as an object.
+
+Major problem: unplanned obstructions!
+
+Use Otsu's binarization in color segmentation?
+
+Watershed Algorithm:
+Need to select points where the "flooding" starts
+At first can be user selected (by clicking on object that needs to be grasped)
+
+GrabCut: need to give a bounding box (maybe use fiduciaries)
+
+SIFT/SURF: get video footage from hand camera panning/zooming around scene?
+FastFeatureDetector openCV
+
+CenSurE is scale-invariant and outperforms other feature detectors. BRIEF is a feature descriptor compression algorithm (I think) which can be used as an optimization if CenSurE/Star is not satisfactory.
+
+Hierarchical clustering: might be good for sorting demo
+
+Object recognition toolkits:
+INRIA: looks poorly maintained and possibly abandoned, also only for C++ (which is a hurdle that could be overcome)
+ASL: see above
+ITK: might not have much more than OpenCV does, must investigate
+IVT: meh
+BazAR: Point matching for feature detection, probably overkill unless I introduce objects with a more complicated geometry, also OpenCV does have this functionality
+ccv: might be overkill. Offers: BBF (for face detection), SIFT (which OpenCV offers)
+
+Conclusion:
+Trying to go for least effort with best outcome, I'm going to try the following algorithms on Baxter to recognize a variety of objects on the table:
+CenSurE (Star in OpenCV)
+Watershed
+GrabCut
+
+Results:
+
+I wrote a routine that runs the Star detector on the scene to find feature points, clusters the points using k-means, and draws the polygon containing the convex hull of each cluster. The basic idea is there, but it does not quite work yet. I need to play around a bit more with the parameters and maybe add sliders so that I can find the optimal ones. I also need to add some kind of averaging for the data between frames so that the detector and the clustering is more robust and consistent between frames.
+
+To do:
+Star detector:
+    better parameters
+    better detector for k, the number of clusters (try plotting?)
+    try combining star detector and grabcut (segmentation)
+    frame averaging (this will be helpful no matter what)/time series clustering (?)
+Watershed
+Just GrabCut
+Fix color seg
