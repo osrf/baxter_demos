@@ -13,8 +13,9 @@ import baxter_interface
 from baxter_interface import CHECK_VERSION
 import common
 import ik_command
-import cv2, cv_bridge
+import cv, cv2, cv_bridge
 import numpy
+from scipy.ndimage import label
 import tf
 from sensor_msgs.msg import (
     Image,
@@ -32,27 +33,28 @@ class CameraSubscriber:
 
     def callback(self, data):
         self.get_data(data)
-        cv2.imshow("Hand camera", self.img)
+        cv2.imshow("Hand camera", self.cur_img)
         cv2.waitKey(100)
 
     def get_data(self, data):
         img = cv_bridge.CvBridge().imgmsg_to_cv2(data)
-        self.img = img
+        self.cur_img = img
 
 class ProcessSubscriber(CameraSubscriber):
-    def __init__(self, method, point):
-
+    def __init__(self, method, point, gamma = 1):
+        self.gamma = gamma
         #TODO: write wrappers for edge and color detection
+        cv2.createTrackbar("gamma", "Processed image", 80, 100, self.updateGamma)
         if method == 'edge':
             cv2.createTrackbar("threshold 1", "Processed image", 500, 2000, nothing)
             cv2.createTrackbar("threshold 2", "Processed image", 10, 2000, nothing)
             self.detectFunction = self.edgeDetect
         elif method == 'color':
         #TODO: make color detection work, ever.
-            cv2.createTrackbar("blur", "Processed image", 2, 15, nothing)
-            cv2.createTrackbar("radius", "Processed image", 10, 128, nothing)
-            cv2.createTrackbar("open", "Processed image", 3, 15, nothing)
-            cv2.createTrackbar("close", "Processed image", 3, 15, nothing)
+            cv2.createTrackbar("blur", "Processed image", 12, 50, nothing)
+            cv2.createTrackbar("radius", "Processed image", 6, 128, self.updateRadius)
+            self.radius = 10
+            cv2.createTrackbar("open", "Processed image", 4, 15, nothing)
             self.detectFunction = self.colorDetect
 
         elif method == 'star':
@@ -66,9 +68,21 @@ class ProcessSubscriber(CameraSubscriber):
             cv2.createTrackbar("Binarized line threshold", "Processed image", 3, 30, self.updateDetector)
             self.detector = cv2.StarDetector(maxSize, responseThreshold, lineThresholdProjected, lineThresholdBinarized) 
             self.detectFunction = self.starDetect
+        elif method == 'watershed':
+            self.detectFunction = self.watershedDetect
+            cv2.createTrackbar("blur", "Processed image", 4, 15, nothing)
 
         self.point = point
         self.centroid = point
+        self.prev_img = None
+
+    def updateRadius(self, r):
+        self.radius = r
+
+    def updateGamma(self, g):
+        #g = cv2.getTrackbarPos("gamma", "Processed image")
+        self.gamma = float(g)/100.0
+
     def updateDetector(self):
         maxSize = 45
         responseThreshold = cv2.getTrackbarPos("Response threshold", "Processed image")
@@ -76,11 +90,20 @@ class ProcessSubscriber(CameraSubscriber):
         lineThresholdBinarized = cv2.getTrackbarPos("Binarized line threshold", "Processed image")
         self.detector = cv2.StarDetector(maxSize, responseThreshold, lineThresholdProjected, lineThresholdBinarized) 
 
+    def simpleFilter(self):
+        #Very simple filter
+        if self.prev_img is None:
+            self.prev_img = self.cur_img
+        return (self.gamma * self.cur_img + (1-self.gamma)*self.prev_img).astype(numpy.uint8)
+
     def callback(self, data):
         CameraSubscriber.get_data(self, data)
         #Process image
-        cv2.imshow("Hand camera", self.img)
-        self.processed = self.detectFunction(self.img, self.point)
+        cv2.imshow("Hand camera", self.cur_img)
+
+        self.img = self.simpleFilter()
+
+        self.processed = self.detectFunction(self.img)
         cv2.imshow("Processed image", self.processed)
         
         #Find the contour associated with self.point
@@ -105,7 +128,9 @@ class ProcessSubscriber(CameraSubscriber):
         cv2.imshow("Contours", contour_img)
         cv2.waitKey(100)
 
-    def starDetect(self, img, point=None):
+        self.prev_img = self.img
+
+    def starDetect(self, img):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         keypoints = self.detector.detect(gray)
         #Render the key points
@@ -123,6 +148,7 @@ class ProcessSubscriber(CameraSubscriber):
         delta = 1000
         prev_compactness = sys.maxint
         for k in range(1, max(2, int(n/3))):
+            print "Trying k-means with k="+str(k)+", n="+str(n)
             max_iter = 10
             epsilon = 1.0
             attempts = 10
@@ -133,11 +159,12 @@ class ProcessSubscriber(CameraSubscriber):
                 break
             prev_compactness = compactness
         # Put the output of k-means into a convenient dictionary
-        print k
         labels = labels.flatten()
         polys = {} #Dictionary to group the polygons
         for i in range(labels.shape[0]):
             polys.setdefault(labels[i], []).append(samples[i, :])
+        
+        #set this guy to all black
         gray[:] = 0 
         # Draw polygon around clusters
         #TODO: load these values from file because calculating this is godawful
@@ -148,15 +175,58 @@ class ProcessSubscriber(CameraSubscriber):
         for i in polys.keys():
             points = numpy.array(polys[i]).astype(int)
 
-            for point in points:
+            """for point in points:
                 # Draw clustered points in the same color
-                cv2.circle(img=img, center=tuple(point.flatten().tolist()), radius=2, color=colors[i % len(colors)], thickness=-1)
+                cv2.circle(img=img, center=tuple(point.flatten().tolist()), radius=2, color=colors[i % len(colors)], thickness=-1)"""
 
+            #Draw the convex hull of the points in the processed image
             hull = cv2.convexHull(points)
             hull = hull.reshape((hull.shape[0], 1, 2))
             cv2.fillConvexPoly(gray, hull, color=255)
         cv2.imshow("Hand camera", img)
         return gray
+
+    def watershedDetect(self, img):
+        # Do some preprocessing
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        blur_radius = cv2.getTrackbarPos("blur", "Processed image")
+        blur_radius = blur_radius*2-1
+        if blur_radius > 0:
+            gray = cv2.GaussianBlur(gray, (blur_radius, blur_radius), 0)
+        # Blur/diffusion filter (?)
+        # Get initial markers
+
+        ret, markers = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        kernel_size = 5
+        kernel = numpy.ones((kernel_size,kernel_size),numpy.uint8)
+
+        markers = cv2.morphologyEx(markers, cv2.MORPH_OPEN,kernel, iterations = 3)
+
+        border = cv2.dilate(markers, kernel,iterations=3)
+        border = border - cv2.erode(border, kernel, iterations=1)
+        retval, border = cv2.threshold(border, 0, 255, cv2.THRESH_OTSU)
+        border = cv2.morphologyEx(border, cv2.MORPH_CLOSE,kernel, iterations = 3)
+
+        dt = cv2.distanceTransform(markers, 2, 3)
+        dt = ((dt - dt.min()) / (dt.max() - dt.min()) * 255).astype(numpy.uint8)
+        _, dt = cv2.threshold(dt, 180, 255, cv2.THRESH_BINARY)
+        lbl, ncc = label(dt)
+        lbl = lbl * (255/ncc)
+        lbl[border == 255] = 255
+
+        # segment
+        markers = lbl.astype(numpy.int32)
+        if img.dtype != numpy.uint8:
+            img = img.astype(numpy.uint8)
+        if img.shape[2] > 3:
+            img = img[:, :, 0:3]
+        cv2.watershed(img, markers)
+        # Fill image
+
+        result = markers
+        result[markers == -1] = 0
+        result = result.astype(numpy.uint8)
+        return result
 
     def edgeDetect(self, img):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -169,33 +239,47 @@ class ProcessSubscriber(CameraSubscriber):
         #Blur the image to get rid of those annoying speckles
         blur_radius = cv2.getTrackbarPos("blur", "Processed image")
         blur_radius = blur_radius*2-1
-        blur_img = cv2.GaussianBlur(img, (blur_radius, blur_radius), 0)
+        if blur_radius > 0:
+            blur_img = cv2.GaussianBlur(img, (blur_radius, blur_radius), 0)
+        else:
+            blur_img = img
+
         #Get color of point in image
-        blur_img = img
-        color = blur_img[self.point[0], self.point[1]]
+        blur_img = cv2.cvtColor(blur_img, cv2.COLOR_BGR2HSV).astype(numpy.uint8)
+        print self.point
+        color = blur_img[self.point[1], self.point[0]]
         print color
-        radius = cv2.getTrackbarPos("radius", "Processed image")
+        radius = self.radius
         #Grab the R, G, B channels as separate matrices
         #use cv2.threshold on each of them
         #AND the three images together
         bw = numpy.ones(img.shape[0:2], numpy.uint8)
-        for i in range(3):
+        maxvals = [179, 255, 255]
+        for i in [0]: #Just try hue
+            minval = color[i] - radius
+            maxval = color[i] + radius
             if radius > color[i]:
-                radius = color[i]
-            if radius + color[i] > 255:
-                radius = 255 - color[i]
-            channel = blur_img[:, :, i]
-            retval, minthresh = cv2.threshold(channel, color[i]-radius, 1, cv2.THRESH_BINARY)
-            retval, maxthresh = cv2.threshold(channel, color[i]+radius, 1, cv2.THRESH_BINARY_INV)
-            bw = numpy.multiply(bw, minthresh)
-            bw = numpy.multiply(bw, maxthresh)
-        #Now do some morphologies
-        bw *= 255
-        """
-        close_radius = cv2.getTrackbarPos("close", "Processed image")
-        close_kernel = numpy.array([close_radius, close_radius])
+                minval = 0
+            elif radius + color[i] > maxvals[i]:
+                minval = color[i] - radius
 
-        bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, close_kernel)"""
+            channel = blur_img[:, :, i]
+            retval, minthresh = cv2.threshold(channel, minval, 255, cv2.THRESH_BINARY)
+            #cv2.imshow("Threshold up", minthresh)
+            retval, maxthresh = cv2.threshold(channel, maxval, 255, cv2.THRESH_BINARY_INV)
+            #cv2.imshow("Threshold down", maxthresh)
+            #cv2.waitKey()
+            #bw = numpy.multiply(bw, minthresh)
+            #bw = numpy.multiply(bw, maxthresh)
+            bw = cv2.bitwise_and(bw, minthresh)
+            bw = cv2.bitwise_and(bw, maxthresh)
+        bw *= 255
+        
+        open_radius = cv2.getTrackbarPos("open", "Processed image")
+        if open_radius != 0:
+            open_kernel = numpy.array([open_radius, open_radius])
+
+            bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, open_kernel, iterations = 2)
         return bw
 
 class MouseListener():
@@ -249,7 +333,7 @@ def main():
         help='send joint trajectory to which limb'
     )
     
-    parser.add_argument('-m', '--method', choices=['color', 'edge', 'star'],
+    parser.add_argument('-m', '--method', choices=['color', 'edge', 'star', 'watershed'],
         required=False, help='which object detection method to use')
 
     """required.add_argument(
@@ -259,7 +343,7 @@ def main():
     args = parser.parse_args(rospy.myargv()[1:])
     limb = args.limb
     if args.method is None:
-        args.method = 'star'
+        args.method = 'watershed'
 
     print("Initializing node... ")
     rospy.init_node("baxter_object_tracker_%s" % (limb,))
@@ -294,7 +378,11 @@ def main():
     imgproc = ProcessSubscriber(args.method, (ml.x_clicked, ml.y_clicked))
     imgproc.subscribe(limb)
 
-    print "Press SPACE to begin hand servoing"
+    while not rospy.is_shutdown():
+        cv2.waitKey(10)
+
+
+    """print "Press SPACE to begin hand servoing"
     while (not rospy.is_shutdown()) and (cv2.waitKey(100) != 32):
         pass
 
@@ -303,7 +391,7 @@ def main():
         print "Begin hand servoing"
         #cv2.waitKey(10) 
         #Move the hand 
-        command_hand(limb, imgproc.centroid, iksvc)
+        command_hand(limb, imgproc.centroid, iksvc)"""
 
 if __name__ == "__main__":
     main()
