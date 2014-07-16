@@ -50,7 +50,6 @@ class ProcessSubscriber(CameraSubscriber):
             cv2.createTrackbar("threshold 2", "Processed image", 10, 2000, nothing)
             self.detectFunction = self.edgeDetect
         elif method == 'color':
-        #TODO: make color detection work, ever.
             cv2.createTrackbar("blur", "Processed image", 12, 50, nothing)
             cv2.createTrackbar("radius", "Processed image", 6, 128, self.updateRadius)
             self.radius = 10
@@ -58,7 +57,6 @@ class ProcessSubscriber(CameraSubscriber):
             self.detectFunction = self.colorDetect
 
         elif method == 'star':
-            #TODO: sliders
             maxSize = 45 # Maximum number of filters to apply?
             responseThreshold = 40 # higher = fewer features retrieved
             lineThresholdProjected = 15  # maximum ratio between Harris of responses. higher = eliminates more edges
@@ -144,7 +142,6 @@ class ProcessSubscriber(CameraSubscriber):
         samples = numpy.float32(samples)
 
         # Cluster by size, determining the number of clusters by their compactness
-        # TODO: input k?
         delta = 1000
         prev_compactness = sys.maxint
         for k in range(1, max(2, int(n/3))):
@@ -167,7 +164,7 @@ class ProcessSubscriber(CameraSubscriber):
         #set this guy to all black
         gray[:] = 0 
         # Draw polygon around clusters
-        #TODO: load these values from file because calculating this is godawful
+        # load these values from file because calculating this is godawful
         phi = (1.0+sqrt(5))/2.0
         hues = [ numpy.array([floor( (i*phi - floor(i*phi)) * 179), 255, 255]) for i in range(0, 100, 10)]
         
@@ -265,12 +262,7 @@ class ProcessSubscriber(CameraSubscriber):
 
             channel = blur_img[:, :, i]
             retval, minthresh = cv2.threshold(channel, minval, 255, cv2.THRESH_BINARY)
-            #cv2.imshow("Threshold up", minthresh)
             retval, maxthresh = cv2.threshold(channel, maxval, 255, cv2.THRESH_BINARY_INV)
-            #cv2.imshow("Threshold down", maxthresh)
-            #cv2.waitKey()
-            #bw = numpy.multiply(bw, minthresh)
-            #bw = numpy.multiply(bw, maxthresh)
             bw = cv2.bitwise_and(bw, minthresh)
             bw = cv2.bitwise_and(bw, maxthresh)
         bw *= 255
