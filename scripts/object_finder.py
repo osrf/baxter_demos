@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 """Simple Object Tracker by Jackie Kay (jackie@osrfoundation.org)
-Select one of several object recognition methods and an object in Baxter's hand camera to track.
-Baxter will try to keep the camera aligned with the object centroid.
+User selects a detection method and an object in Baxter's hand camera view.
+This node returns the centroid of the desired object in the camera frame.
 """
 
 import sys
@@ -12,7 +12,6 @@ import rospy
 import baxter_interface
 from baxter_interface import CHECK_VERSION
 import common
-import ik_command
 import cv, cv2, cv_bridge
 import numpy
 from scipy.ndimage import label
@@ -20,16 +19,17 @@ import tf
 from sensor_msgs.msg import (
     Image,
 )
+from geometry_msgs.msg import(Point)
 
 alpha = 0.001
 
 class CameraSubscriber:
     def subscribe(self, limb):
         self.limb = limb
-        self.handler = rospy.Subscriber("/cameras/"+limb+"_hand_camera/image", Image, self.callback)
+        self.handler_sub = rospy.Subscriber("/cameras/"+limb+"_hand_camera/image", Image, self.callback)
 
     def unsubscribe(self):
-        self.handler.unregister()
+        self.handler_sub.unregister()
 
     def callback(self, data):
         self.get_data(data)
@@ -40,21 +40,22 @@ class CameraSubscriber:
         img = cv_bridge.CvBridge().imgmsg_to_cv2(data)
         self.cur_img = img
 
-class ProcessSubscriber(CameraSubscriber):
+class ObjectFinder(CameraSubscriber):
     def __init__(self, method, point, gamma = 1):
         self.gamma = gamma
         #TODO: write wrappers for edge and color detection
-        cv2.createTrackbar("gamma", "Processed image", 80, 100, self.updateGamma)
+        cv2.createTrackbar("gamma", "Processed image", 95, 100, self.updateGamma)
         if method == 'edge':
             cv2.createTrackbar("threshold 1", "Processed image", 500, 2000, nothing)
             cv2.createTrackbar("threshold 2", "Processed image", 10, 2000, nothing)
             self.detectFunction = self.edgeDetect
         elif method == 'color':
-            cv2.createTrackbar("blur", "Processed image", 12, 50, nothing)
-            cv2.createTrackbar("radius", "Processed image", 6, 128, self.updateRadius)
+            cv2.createTrackbar("blur", "Processed image", 18, 50, nothing)
+            cv2.createTrackbar("radius", "Processed image", 20, 128, self.updateRadius)
             self.radius = 10
             cv2.createTrackbar("open", "Processed image", 4, 15, nothing)
             self.detectFunction = self.colorDetect
+            self.color = None
 
         elif method == 'star':
             maxSize = 45 # Maximum number of filters to apply?
@@ -71,8 +72,13 @@ class ProcessSubscriber(CameraSubscriber):
             cv2.createTrackbar("blur", "Processed image", 4, 15, nothing)
 
         self.point = point
-        self.centroid = point
+        self.centroid = None
         self.prev_img = None
+
+    def publish(self, limb, rate = 10):
+        topic = "object_tracker/"+limb+"/centroid"
+        self.handler_pub = rospy.Publisher(topic, Point)
+        self.pub_rate = rospy.Rate(rate)
 
     def updateRadius(self, r):
         self.radius = r
@@ -94,6 +100,22 @@ class ProcessSubscriber(CameraSubscriber):
             self.prev_img = self.cur_img
         return (self.gamma * self.cur_img + (1-self.gamma)*self.prev_img).astype(numpy.uint8)
 
+    def getEncirclingContour(self, contours):
+        for contour in contours:
+            if cv2.pointPolygonTest(contour, self.point, False) > 0:
+                #print "Found contour encircling desired point"
+                return contour
+
+    def getLargestContour(self, contours):
+        maxpair = (None, 0)
+        if len(contours) == 0:
+            raise Exception("Got no contours in getLargestContour")
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area > maxpair[1]:
+                maxpair = (contour, area)
+        return maxpair[0]
+
     def callback(self, data):
         CameraSubscriber.get_data(self, data)
         #Process image
@@ -112,12 +134,10 @@ class ProcessSubscriber(CameraSubscriber):
             return
             
         cv2.drawContours(contour_img, contours, -1, (255, 255, 255))
-
-        #Need a more sophisticated test, this does not work all the time
-        for contour in contours:
-            if cv2.pointPolygonTest(contour, self.point, False) > 0:
-                #print "Found contour encircling desired point"
-                break
+        contour = self.getLargestContour(contours)
+        if contour == None:
+            cv2.waitKey(100)
+            return
 
         #Find the centroid of this contour
         self.centroid = (int(numpy.mean(contour[:, :, 0])), int(numpy.mean(contour[:, :, 1])) )
@@ -244,21 +264,21 @@ class ProcessSubscriber(CameraSubscriber):
         #Get color of point in image
         blur_img = cv2.cvtColor(blur_img, cv2.COLOR_BGR2HSV).astype(numpy.uint8)
         print self.point
-        color = blur_img[self.point[1], self.point[0]]
-        print color
+        if self.color == None:
+            self.color = blur_img[self.point[1], self.point[0]]
         radius = self.radius
         #Grab the R, G, B channels as separate matrices
         #use cv2.threshold on each of them
         #AND the three images together
         bw = numpy.ones(img.shape[0:2], numpy.uint8)
         maxvals = [179, 255, 255]
-        for i in [0]: #Just try hue
-            minval = color[i] - radius
-            maxval = color[i] + radius
-            if radius > color[i]:
+        for i in range(3):
+            minval = self.color[i] - radius
+            maxval = self.color[i] + radius
+            if radius > self.color[i]:
                 minval = 0
-            elif radius + color[i] > maxvals[i]:
-                minval = color[i] - radius
+            elif radius + self.color[i] > maxvals[i]:
+                minval = self.color[i] - radius
 
             channel = blur_img[:, :, i]
             retval, minthresh = cv2.threshold(channel, minval, 255, cv2.THRESH_BINARY)
@@ -286,31 +306,6 @@ class MouseListener():
             self.y_clicked = y
             self.done = True
 
-
-def command_hand(limb, centroid, iksvc):
-    limb_if = baxter_interface.Limb(limb)
-    #Current orientation as a quaternion
-    try:
-        position = numpy.array(limb_if.endpoint_pose()['position'])
-        orientation = numpy.array(limb_if.endpoint_pose()['orientation'])
-    except KeyError:
-        print "Didn't get position or orientation from limb interface"
-        return
-    #Rotation matrix
-    R = tf.transformations.quaternion_matrix(orientation)
-    R_inv = tf.transformations.inverse_matrix(R)
-    p_centroid = numpy.array(list(centroid)+[0, 1])
-    #Get goal direction
-    direction = alpha*(R_inv.dot( p_centroid))
-
-    #Add direction to current pose
-    position = position + direction[0:3].flatten()
-    print position, orientation
-    desired_p = numpy.concatenate((position, orientation))
-    print desired_p
-    #Command
-    ik_command.service_request(iksvc, desired_p, limb)
-    
 
 def nothing(args):
     pass
@@ -367,18 +362,24 @@ def main():
     #elif args.method == 'rectangle':
     print "Starting image processor"
     cam.unsubscribe()
-    imgproc = ProcessSubscriber(args.method, (ml.x_clicked, ml.y_clicked))
+    imgproc = ObjectFinder(args.method, (ml.x_clicked, ml.y_clicked))
     imgproc.subscribe(limb)
+    imgproc.publish(limb)
 
     while not rospy.is_shutdown():
-        cv2.waitKey(10)
+        if imgproc.centroid is None:
+            #Could probably give this message a better encoding
+            msg = Point(-1, -1, -1)
+        else:
+            msg = Point(imgproc.centroid[0], imgproc.centroid[1], 0)
+        imgproc.handler_pub.publish(msg)
+        imgproc.pub_rate.sleep()
 
 
     """print "Press SPACE to begin hand servoing"
     while (not rospy.is_shutdown()) and (cv2.waitKey(100) != 32):
         pass
 
-    iksvc, ns = ik_command.connect_service(limb)
     while not rospy.is_shutdown():
         print "Begin hand servoing"
         #cv2.waitKey(10) 

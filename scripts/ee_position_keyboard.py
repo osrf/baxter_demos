@@ -96,9 +96,7 @@ def map_keyboard():
         limb.set_joint_positions(joint_command)
 
     def command_ik(side, direction):
-        """Use the Rethink IK service to figure out a desired joint position
-           This is way too slow to use in realtime. Unless I figure out why the
-           IK service takes minutes to respond, not going to use it."""
+        """Use the Rethink IK service to figure out a desired joint position"""
         if side == 'left':
             limb = left
             iksvc = left_iksvc

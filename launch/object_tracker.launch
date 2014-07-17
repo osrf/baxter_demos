@@ -1,0 +1,25 @@
+<launch>
+  <arg name="limb"     default="right"/>
+  <arg name="method"   default="color"/>
+  <!--Table height in meters (z coordinate of Baxter's physical workspace) -->
+  <arg name="table"    default=""/>
+  <arg name="camera_x" default=640/>
+  <arg name="camera_y" default=400/>
+
+  <!-- Start the Joint Trajectory Action Server -->
+  <node name="rsdk_joint_trajectory_action_server" pkg="baxter_interface"
+  type="joint_trajectory_action_server.py" args="--limb $(arg limb)"
+  required="true" />
+
+  <!-- Open the camera with the specified size-->
+  <node name="open_camera" pkg="rosservice" type="rosservice" name="/cameras/open"
+  args="--name /cameras/$arg(limb)_hand_camera --settings {width=$arg(camera_x) height=$arg(camera_y)}"/>
+
+  <node pkg="baxter_demos" name="object_finder"> type="object_finder.py"
+  args="--limb $arg(limb) --method $arg(method)" required="true"/>
+
+  <node pkg="baxter_demos" name="visual_servo"> type="visual_servo.py"
+  args="--limb $arg(limb) --table $arg(table) --camera_x $arg(camera_x) --camera_y $arg(camera_y)" required="true"/>
+
+
+</launch>
