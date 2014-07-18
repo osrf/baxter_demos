@@ -1,6 +1,5 @@
 <launch>
-  <!--Replace this with the path to your baxter_demos repo, make sure it ends in /-->
-  <arg name="img_folder" default="/home/jackie/ros_ws/src/baxter_demos/assets/"/>
+  <arg name="img_folder" default="$(find baxter_demos)/assets/"/>
 
   <arg name="limb" default="right"/>
 

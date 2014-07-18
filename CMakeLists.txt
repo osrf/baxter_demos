@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 2.4.6)
-include($ENV{ROS_ROOT}/core/rosbuild/rosbuild.cmake)
+project(baxter_demos)
+#include($ENV{ROS_ROOT}/core/rosbuild/rosbuild.cmake)
 
 # Set the build type.  Options are:
 #  Coverage       : w/ debug symbols, w/o optimization, w/ code-coverage
@@ -9,12 +10,50 @@ include($ENV{ROS_ROOT}/core/rosbuild/rosbuild.cmake)
 #  MinSizeRel     : w/o debug symbols, w/ optimization, stripped binaries
 #set(ROS_BUILD_TYPE RelWithDebInfo)
 
-rosbuild_init()
+#rosbuild_init()
+
+find_package(catkin REQUIRED COMPONENTS
+    rospy
+    baxter_interface
+    std_msgs
+    geometry_msgs
+    message_generation
+)
+
+catkin_python_setup()
+
+add_message_files(
+    FILES
+    BlobInfo.msg
+)
+
+generate_messages(
+    DEPENDENCIES
+    std_msgs
+    geometry_msgs
+)
+
+catkin_package(
+    CATKIN_DEPENDS message_runtime
+)
+
+install(
+  DIRECTORY scripts/
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+  USE_SOURCE_PERMISSIONS
+)
+
+install(
+  DIRECTORY launch/
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
+  USE_SOURCE_PERMISSIONS
+)
+
 
 #set the default path for built executables to the "bin" directory
-set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
+#set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 #set the default path for built libraries to the "lib" directory
-set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
+#set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
 #uncomment if you have defined messages
 #rosbuild_genmsg()

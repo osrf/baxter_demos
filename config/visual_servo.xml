@@ -1,0 +1,25 @@
+
+<!--Parameters for the baxter_demos/object_tracker application based on Baxter's workspace-->
+
+<node pkg="baxter_demos" name="visual_servo" type="visual_servo.py"
+args="--limb $(arg limb)" required="true">
+    <!--speed determines how fast Baxter's arm moves in visual_servo-->
+    <param name="servo_speed" value="0.0095"/>
+
+    <!--min_pose_z is the minimum allowed height of Baxter's end effector. Figure this out by checking what the z position coordinate of /robot/limb/<side>/endpoint_state is when Baxter's gripper is close to its work surface-->
+    <param name="min_pose_z" value="-0.02"/>
+
+    <!--min_ir_depth is the minimum allowed IR depth. Figure this out by placing Baxter's gripper around an object, close enough for it to get a firm grasp on that object, and check the range field of /robot/range/<side>_hand_range/state -->
+    <param name="min_ir_depth" value="0.1" />
+
+    <!--the dimensions of Baxter's hand camera-->
+    <param name="camera_x" value="640"/>
+    <param name="camera_y" value="400"/>
+    
+    <param name="goal_ratio_x" value=0.5/> 
+    <param name="goal_ratio_y" value=0.15/> 
+
+    <!-- UNUSED: these are the ratios where the edges of Baxter's grippers appear on its right camera, relative to the dimensions of the camera. So, if the width of the camera is 640, you can get the pixel value position of the innermost edge of the left gripper by gripper_min*640-->
+    <param name="gripper_min" value="0.289" />
+    <param name="gripper_max" value="0.75" />
+</node>

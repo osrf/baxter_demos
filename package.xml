@@ -1,0 +1,44 @@
+<package>
+  <name>baxter_demos</name>
+  <version>1.0.0</version>
+  <description>
+    Some cool demos for the Baxter research robot.
+  </description>
+
+  <maintainer email="jackie@osrfoundation.com">
+   Jackie Kay 
+  </maintainer>
+  <license>BSD</license>
+  <url type="repository">
+    https://github.com/jacquelinekay/baxter_demos
+  </url>
+  <url type="bugtracker">
+    https://github.com/jacquelinekay/baxter_demos/issues
+  </url>
+  <author>Jackie Kay</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>rospy</build_depend>
+  <build_depend>actionlib</build_depend>
+  <build_depend>sensor_msgs</build_depend>
+  <build_depend>control_msgs</build_depend>
+  <build_depend>trajectory_msgs</build_depend>
+  <build_depend>cv_bridge</build_depend>
+  <build_depend>dynamic_reconfigure</build_depend>
+  <build_depend>baxter_core_msgs</build_depend>
+  <build_depend>baxter_interface</build_depend>
+
+  <run_depend>message_runtime</run_depend>
+  <run_depend>rospy</run_depend>
+  <run_depend>actionlib</run_depend>
+  <run_depend>sensor_msgs</run_depend>
+  <run_depend>control_msgs</run_depend>
+  <run_depend>trajectory_msgs</run_depend>
+  <run_depend>cv_bridge</run_depend>
+  <run_depend>dynamic_reconfigure</run_depend>
+  <run_depend>baxter_core_msgs</run_depend>
+  <run_depend>baxter_interface</run_depend>
+
+</package>
+

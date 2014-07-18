@@ -19,9 +19,13 @@ import tf
 from sensor_msgs.msg import (
     Image,
 )
+
+from baxter_demos.msg import (
+    BlobInfo
+)
+
 from geometry_msgs.msg import(Point)
 
-alpha = 0.001
 
 class CameraSubscriber:
     def subscribe(self, limb):
@@ -72,12 +76,13 @@ class ObjectFinder(CameraSubscriber):
             cv2.createTrackbar("blur", "Processed image", 4, 15, nothing)
 
         self.point = point
-        self.centroid = None
+        self.centroid = (-1, -1, -1)
+        self.x_extremes = (-1, -1)
         self.prev_img = None
 
     def publish(self, limb, rate = 10):
         topic = "object_tracker/"+limb+"/centroid"
-        self.handler_pub = rospy.Publisher(topic, Point)
+        self.handler_pub = rospy.Publisher(topic, BlobInfo)
         self.pub_rate = rospy.Rate(rate)
 
     def updateRadius(self, r):
@@ -131,21 +136,36 @@ class ObjectFinder(CameraSubscriber):
         contours, hierarchy = cv2.findContours(contour_img, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
         if contours is None or len(contours) == 0:
             cv2.waitKey(100)
+            self.centroid = None
             return
             
         cv2.drawContours(contour_img, contours, -1, (255, 255, 255))
         contour = self.getLargestContour(contours)
         if contour == None:
             cv2.waitKey(100)
+            self.centroid = None
             return
 
         #Find the centroid of this contour
-        self.centroid = (int(numpy.mean(contour[:, :, 0])), int(numpy.mean(contour[:, :, 1])) )
+        #self.centroid = (int(numpy.mean(contour[:, :, 0])), int(numpy.mean(contour[:, :, 1])) )
+        moments = cv2.moments(contour)
+        self.centroid = ( int(moments['m10']/moments['m00'] ), int(moments['m01']/moments['m00']) )
+        
         #print "Found centroid:", self.centroid
         cv2.circle(img=contour_img, center=self.centroid, radius=3, color=(255, 255, 255), thickness=-1)
+
+
+        #Also publish the two extreme x-coordinates (min and max)
+        #print contour
+        #cv2.waitKey()
+        xmin = numpy.amin(contour[:, 0, 0])
+        xmax = numpy.amax(contour[:, 0, 0])
+        self.x_extremes = (xmin, xmax)
+
+        #cv2.circle(img=contour_img, center=tuple(xmin.tolist()), radius=3, color=(255, 255, 255), thickness=-1)
+        #cv2.circle(img=contour_img, center=tuple(xmax.tolist()), radius=3, color=(255, 255, 255), thickness=-1)
         cv2.imshow("Contours", contour_img)
         cv2.waitKey(100)
-
         self.prev_img = self.img
 
     def starDetect(self, img):
@@ -272,7 +292,9 @@ class ObjectFinder(CameraSubscriber):
         #AND the three images together
         bw = numpy.ones(img.shape[0:2], numpy.uint8)
         maxvals = [179, 255, 255]
-        for i in range(3):
+        for i in [0, 1]:
+            #if i == 3:
+            #    radius += radius/5 #Allow value to be more forgiving
             minval = self.color[i] - radius
             maxval = self.color[i] + radius
             if radius > self.color[i]:
@@ -369,12 +391,15 @@ def main():
     while not rospy.is_shutdown():
         if imgproc.centroid is None:
             #Could probably give this message a better encoding
-            msg = Point(-1, -1, -1)
+            centroid = Point(-1, -1, -1)
         else:
-            msg = Point(imgproc.centroid[0], imgproc.centroid[1], 0)
+            centroid = Point(imgproc.centroid[0], imgproc.centroid[1], 0)
+        msg = BlobInfo()
+        msg.centroid = centroid
+        msg.xmin = imgproc.x_extremes[0]
+        msg.xmax = imgproc.x_extremes[1]
         imgproc.handler_pub.publish(msg)
         imgproc.pub_rate.sleep()
-
 
     """print "Press SPACE to begin hand servoing"
     while (not rospy.is_shutdown()) and (cv2.waitKey(100) != 32):
