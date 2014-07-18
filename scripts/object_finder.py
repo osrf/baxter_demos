@@ -31,6 +31,7 @@ class CameraSubscriber:
     def subscribe(self, limb):
         self.limb = limb
         self.handler_sub = rospy.Subscriber("/cameras/"+limb+"_hand_camera/image", Image, self.callback)
+        self.cv_wait = 100
 
     def unsubscribe(self):
         self.handler_sub.unregister()
@@ -38,7 +39,7 @@ class CameraSubscriber:
     def callback(self, data):
         self.get_data(data)
         cv2.imshow("Hand camera", self.cur_img)
-        cv2.waitKey(100)
+        cv2.waitKey(self.cv_wait)
 
     def get_data(self, data):
         img = cv_bridge.CvBridge().imgmsg_to_cv2(data)
@@ -80,10 +81,10 @@ class ObjectFinder(CameraSubscriber):
         self.x_extremes = (-1, -1)
         self.prev_img = None
 
-    def publish(self, limb, rate = 10):
+    def publish(self, limb, rate = 100):
         topic = "object_tracker/"+limb+"/centroid"
         self.handler_pub = rospy.Publisher(topic, BlobInfo)
-        self.pub_rate = rospy.Rate(rate)
+        self.pub_rate = rospy.Rate(5)
 
     def updateRadius(self, r):
         self.radius = r
@@ -135,14 +136,14 @@ class ObjectFinder(CameraSubscriber):
         contour_img = self.processed.copy()
         contours, hierarchy = cv2.findContours(contour_img, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
         if contours is None or len(contours) == 0:
-            cv2.waitKey(100)
+            cv2.waitKey(self.cv_wait)
             self.centroid = None
             return
             
         cv2.drawContours(contour_img, contours, -1, (255, 255, 255))
         contour = self.getLargestContour(contours)
         if contour == None:
-            cv2.waitKey(100)
+            cv2.waitKey(self.cv_wait)
             self.centroid = None
             return
 
@@ -165,7 +166,7 @@ class ObjectFinder(CameraSubscriber):
         #cv2.circle(img=contour_img, center=tuple(xmin.tolist()), radius=3, color=(255, 255, 255), thickness=-1)
         #cv2.circle(img=contour_img, center=tuple(xmax.tolist()), radius=3, color=(255, 255, 255), thickness=-1)
         cv2.imshow("Contours", contour_img)
-        cv2.waitKey(100)
+        cv2.waitKey(self.cv_wait)
         self.prev_img = self.img
 
     def starDetect(self, img):
@@ -373,7 +374,7 @@ def main():
     ml = MouseListener()
     cv2.setMouseCallback("Hand camera", ml.onMouse)
     while not ml.done:
-        cv2.waitKey(10)
+        cv2.waitKey(cam.cv_wait)
 
     cv2.namedWindow("Processed image")
     cv2.namedWindow("Contours")

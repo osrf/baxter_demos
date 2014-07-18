@@ -18,6 +18,14 @@ def connect_service(side):
     iksvc = rospy.ServiceProxy(ns, SolvePositionIK)
     return iksvc, ns
 
+def service_request_velocity(iksvc, vel_vec, side):
+    """Move in the requested direction at a constant velocity vector"""
+    ns = "ExternalTools/"+side+"/PositionKinematicsNode/IKService"
+    ikreq = SolvePositionIKRequest()
+    limb = baxter_interface.Limb(side)
+    hdr = Header(stamp=rospy.Time.now(), frame_id='base')
+
+
 
 def service_request(iksvc, desired_p, side):
     ns = "ExternalTools/"+side+"/PositionKinematicsNode/IKService"

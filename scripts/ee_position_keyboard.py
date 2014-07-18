@@ -55,6 +55,7 @@ def map_keyboard():
     left_iksvc, left_ns = ik_command.connect_service('left')
 
     def command_jacobian(side, direction):
+        #UNUSED
         if side == 'left':
             limb = left
             kin = left_kin
