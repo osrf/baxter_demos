@@ -7,7 +7,7 @@ This node returns the centroid of the desired object in the camera frame.
 
 import sys
 import argparse
-from math import sqrt, floor
+from math import sqrt, floor, pi
 import rospy
 import baxter_interface
 from baxter_interface import CHECK_VERSION
@@ -24,7 +24,9 @@ from baxter_demos.msg import (
     BlobInfo
 )
 
-from geometry_msgs.msg import(Point)
+from geometry_msgs.msg import(
+    Point, Polygon
+)
 
 
 class CameraSubscriber:
@@ -48,15 +50,16 @@ class CameraSubscriber:
 class ObjectFinder(CameraSubscriber):
     def __init__(self, method, point, gamma = 1):
         self.gamma = gamma
-        #TODO: write wrappers for edge and color detection
-        cv2.createTrackbar("gamma", "Processed image", 95, 100, self.updateGamma)
+
+        cv2.createTrackbar("gamma", "Processed image", int(gamma*100), 100, self.updateGamma)
+
         if method == 'edge':
             cv2.createTrackbar("threshold 1", "Processed image", 500, 2000, nothing)
             cv2.createTrackbar("threshold 2", "Processed image", 10, 2000, nothing)
             self.detectFunction = self.edgeDetect
         elif method == 'color':
-            cv2.createTrackbar("blur", "Processed image", 18, 50, nothing)
-            cv2.createTrackbar("radius", "Processed image", 20, 128, self.updateRadius)
+            cv2.createTrackbar("blur", "Processed image", 12, 50, nothing)
+            cv2.createTrackbar("radius", "Processed image", 33, 128, self.updateRadius)
             self.radius = 10
             cv2.createTrackbar("open", "Processed image", 4, 15, nothing)
             self.detectFunction = self.colorDetect
@@ -79,6 +82,7 @@ class ObjectFinder(CameraSubscriber):
         self.point = point
         self.centroid = (-1, -1, -1)
         self.x_extremes = (-1, -1)
+        self.axis = numpy.ones((6))*-1
         self.prev_img = None
 
     def publish(self, limb, rate = 100):
@@ -125,7 +129,6 @@ class ObjectFinder(CameraSubscriber):
     def callback(self, data):
         CameraSubscriber.get_data(self, data)
         #Process image
-        cv2.imshow("Hand camera", self.cur_img)
 
         self.img = self.simpleFilter()
 
@@ -148,27 +151,49 @@ class ObjectFinder(CameraSubscriber):
             return
 
         #Find the centroid of this contour
-        #self.centroid = (int(numpy.mean(contour[:, :, 0])), int(numpy.mean(contour[:, :, 1])) )
         moments = cv2.moments(contour)
-        self.centroid = ( int(moments['m10']/moments['m00'] ), int(moments['m01']/moments['m00']) )
+        self.centroid = ( int(moments['m10']/moments['m00'] ), int(moments['m01']/moments['m00']), 0 )
+ 
+       
+        self.axis = self.getObjectAxes(contour_img, contour)
+        if self.axis is not None:
+            self.axis = numpy.hstack( (self.axis[0:2], 0, self.axis[2:4], 0) )
+            cv2.line(self.cur_img, tuple(self.axis[0:2]), tuple(self.axis[3:5]), (0, 255, 0), 2)
+
+        cv2.circle(img=contour_img, center=self.centroid[0:2], radius=3, color=(255, 255, 255), thickness=-1)
         
-        #print "Found centroid:", self.centroid
-        cv2.circle(img=contour_img, center=self.centroid, radius=3, color=(255, 255, 255), thickness=-1)
+        cv2.imshow("Hand camera", self.cur_img)
 
-
-        #Also publish the two extreme x-coordinates (min and max)
-        #print contour
-        #cv2.waitKey()
-        xmin = numpy.amin(contour[:, 0, 0])
-        xmax = numpy.amax(contour[:, 0, 0])
-        self.x_extremes = (xmin, xmax)
-
-        #cv2.circle(img=contour_img, center=tuple(xmin.tolist()), radius=3, color=(255, 255, 255), thickness=-1)
-        #cv2.circle(img=contour_img, center=tuple(xmax.tolist()), radius=3, color=(255, 255, 255), thickness=-1)
         cv2.imshow("Contours", contour_img)
         cv2.waitKey(self.cv_wait)
         self.prev_img = self.img
 
+    def getObjectAxes(self, img, contour):
+        rect = cv2.boundingRect(contour)
+   
+        #these parameters are, apparently, able make my computer crash...
+        rho, theta, threshold, minLineLength = 1, pi/180, 70, abs(rect[0]-rect[2])/2
+                
+        lines = cv2.HoughLinesP(img, rho, theta, threshold, minLineLength)
+        if lines is None:
+            return None
+        print "lines found: ", lines.shape
+        lines = lines.reshape(lines.shape[1], lines.shape[2])
+        #for line in lines:
+        #    cv2.line(self.cur_img, tuple(line[0:2]), tuple(line[2:4]), (0, 255, 0), 2)
+
+        lengths = numpy.square(lines[:, 0]-lines[:, 2]) + numpy.square(lines[:, 1]-lines[:, 3])
+        #print "Sorting by length"
+        lines = numpy.hstack((lines, lengths.reshape((lengths.shape[0], 1)) ))
+        #print lines
+        lines = lines[lines[:,4].argsort()]
+        #lines = lines[::-1] #Reverse the sorted array
+        lines = lines[:, 0:4]
+        #print lines
+
+        maxline = lines[0]
+        return maxline
+        
     def starDetect(self, img):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         keypoints = self.detector.detect(gray)
@@ -284,7 +309,7 @@ class ObjectFinder(CameraSubscriber):
 
         #Get color of point in image
         blur_img = cv2.cvtColor(blur_img, cv2.COLOR_BGR2HSV).astype(numpy.uint8)
-        print self.point
+        #print self.point
         if self.color == None:
             self.color = blur_img[self.point[1], self.point[0]]
         radius = self.radius
@@ -329,9 +354,12 @@ class MouseListener():
             self.y_clicked = y
             self.done = True
 
+def cleanup():
+    cv2.destroyAllWindows()
 
 def nothing(args):
     pass
+
 
 def main():
     arg_fmt = argparse.RawDescriptionHelpFormatter
@@ -346,10 +374,6 @@ def main():
     parser.add_argument('-m', '--method', choices=['color', 'edge', 'star', 'watershed'],
         required=False, help='which object detection method to use')
 
-    """required.add_argument(
-        '-f', '--folder', required=True, help='path to assets/ folder containing help images'
-    )"""
-
     args = parser.parse_args(rospy.myargv()[1:])
     limb = args.limb
     if args.method is None:
@@ -357,6 +381,8 @@ def main():
 
     print("Initializing node... ")
     rospy.init_node("baxter_object_tracker_%s" % (limb,))
+
+    rospy.on_shutdown(cleanup)
     print("Getting robot state... ")
     rs = baxter_interface.RobotEnable(CHECK_VERSION)
     print("Enabling robot... ")
@@ -366,25 +392,21 @@ def main():
     cam = CameraSubscriber()
     cam.subscribe(limb)
 
-    x_clicked = -1
-    y_clicked = -1
-    done = False
-       
     print("Click on the object you would like to track, then press any key to continue.")
     ml = MouseListener()
+
     cv2.setMouseCallback("Hand camera", ml.onMouse)
     while not ml.done:
         cv2.waitKey(cam.cv_wait)
 
+    detectMethod = None
+
+    cam.unsubscribe()
+
     cv2.namedWindow("Processed image")
     cv2.namedWindow("Contours")
 
-    detectMethod = None
-
-        #TODO: Create sliders for morphological operators
-    #elif args.method == 'rectangle':
     print "Starting image processor"
-    cam.unsubscribe()
     imgproc = ObjectFinder(args.method, (ml.x_clicked, ml.y_clicked))
     imgproc.subscribe(limb)
     imgproc.publish(limb)
@@ -394,23 +416,15 @@ def main():
             #Could probably give this message a better encoding
             centroid = Point(-1, -1, -1)
         else:
-            centroid = Point(imgproc.centroid[0], imgproc.centroid[1], 0)
+            centroid = Point(*imgproc.centroid)
         msg = BlobInfo()
         msg.centroid = centroid
-        msg.xmin = imgproc.x_extremes[0]
-        msg.xmax = imgproc.x_extremes[1]
+        if imgproc.axis is None:
+            imgproc.axis = -1*numpy.ones(6)
+        msg.axis = Polygon([Point(*imgproc.axis[0:3].tolist()), Point(*imgproc.axis[3:6].tolist())])
+
         imgproc.handler_pub.publish(msg)
         imgproc.pub_rate.sleep()
-
-    """print "Press SPACE to begin hand servoing"
-    while (not rospy.is_shutdown()) and (cv2.waitKey(100) != 32):
-        pass
-
-    while not rospy.is_shutdown():
-        print "Begin hand servoing"
-        #cv2.waitKey(10) 
-        #Move the hand 
-        command_hand(limb, imgproc.centroid, iksvc)"""
 
 if __name__ == "__main__":
     main()

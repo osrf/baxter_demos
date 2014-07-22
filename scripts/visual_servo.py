@@ -11,6 +11,8 @@ robot coordinates, and commands the hand to into grasping range
 import sys
 import argparse
 
+from math import pi
+
 import rospy
 import baxter_interface
 
@@ -37,7 +39,8 @@ from geometry_msgs.msg import(Point)
 class VisualCommand():
     def __init__(self, iksvc, limb):
         self.centroid = None
-        self.x_extremes = None
+        #self.x_extremes = None
+        self.axes = None
         self.ir_reading = None
         self.cam_matrix = None
         self.iksvc = iksvc
@@ -45,7 +48,7 @@ class VisualCommand():
         self.limb_iface = baxter_interface.Limb(limb)
         self.tf_listener = tf.TransformListener()
         self.stateidx = 0
-        self.states = self.wait_centroid, self.servo_xy, self.servo_z, self.done_state
+        self.states = self.wait_centroid, self.orient, self.servo_xy, self.servo_z, self.done_state
         self.done = 0
         paramnames = ["servo_speed", "min_pose_z", "min_ir_depth"]
         paramvals = []
@@ -77,8 +80,34 @@ class VisualCommand():
         desired_p = current_p + direction
         ik_command.service_request(self.iksvc, desired_p, self.limb)
 
+    def command_ik_pose(self, direction):
+        end_pose = self.limb_iface.endpoint_pose()
+        current_p = numpy.array(end_pose['position']+end_pose['orientation']) 
+        desired_p = current_p + direction
+        ik_command.service_request(self.iksvc, desired_p, self.limb)
+
     def wait_centroid(self):
         pass
+
+    def orient(self):
+        print "Orienting"
+        inc = 0.075
+        #Turn until we are aligned with the axis provided by object_finder
+        #TODO: more clever and efficient turning
+        joint_name = self.limb + "_w2"
+        joint_angle = self.limb_iface.joint_angle(joint_name) + inc
+        print joint_angle
+        self.limb_iface.set_joint_positions(dict(zip([joint_name],[joint_angle])))
+
+
+    def disoriented(self):
+        #self.axis is neither parallel nor perpendicular to the camera x-axis
+        x_axis = numpy.array([1, 0])
+        axis = numpy.array( [self.axis[2]-self.axis[0], self.axis[3] - self.axis[1]] )
+        theta = numpy.dot(x_axis, axis/numpy.linalg.norm(axis))
+        print "Theta =", theta
+        thresh = 10*pi/180
+        return (abs(theta) > thresh) or (abs(theta-pi/2.0) > thresh)
 
     def servo_xy(self):
         print "translating in XY at speed:", self.inc
@@ -118,20 +147,25 @@ class VisualCommand():
         
         d = self.centroid - self.goal_pos
         if self.done:
+            self.done_state()
             return
         #Maybe experiment with making this proportional to Z-coordinate
         threshold = 10
         #threshold = (self.x_extremes[1] - self.x_extremes[0])*0.2
-        if abs(d[0]) > threshold and abs(d[1]) > threshold:
+        if self.disoriented():
+            print "I am disoriented"
             self.stateidx = 1
-        elif self.outOfRange(): 
+        elif abs(d[0]) > threshold and abs(d[1]) > threshold:
             self.stateidx = 2
-        else:
+        elif self.outOfRange(): 
             self.stateidx = 3
+        else:
+            self.stateidx = 4
         
         self.states[self.stateidx]()
 
     def plan_execute_trajectory(self):
+        #INCOMPLETE
         (trans, rot) = self.tf_listener.lookupTransform('/'+self.limb+'_hand_camera', '/base', rospy.Time(0))
         print "Translation relative to base:", trans
         R = tf.transformations.quaternion_matrix(rot)[:3, :3]
@@ -152,12 +186,19 @@ class VisualCommand():
     def centroid_callback(self, data):
         
         self.centroid = numpy.array((data.centroid.x, data.centroid.y))
-        self.x_extremes = (data.xmin, data.xmax)
+        print "centroid:", self.centroid
+        #self.x_extremes = (data.xmin, data.xmax)
         if self.centroid[0] == -1 or self.centroid[1] == -1:
             print "Waiting on centroid from object_finder"
             self.stateidx = 0
             return
+        print data.axis.points[0]
 
+        def unmap(points):
+            return [points.x, points.y]
+        self.axis = numpy.concatenate( (numpy.array( unmap(data.axis.points[0]) ), numpy.array( unmap(data.axis.points[1])) ) )
+
+        print self.axis
         #self.plan_execute_trajectory()
         self.visual_servo()
 

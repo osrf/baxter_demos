@@ -26,7 +26,6 @@ def service_request_velocity(iksvc, vel_vec, side):
     hdr = Header(stamp=rospy.Time.now(), frame_id='base')
 
 
-
 def service_request(iksvc, desired_p, side):
     ns = "ExternalTools/"+side+"/PositionKinematicsNode/IKService"
     ikreq = SolvePositionIKRequest()
@@ -49,7 +48,7 @@ def service_request(iksvc, desired_p, side):
                                resp.result_type)
     if (resp_seeds[0] != resp.RESULT_INVALID):
         limb_joints = dict(zip(resp.joints[0].name, resp.joints[0].position))
-        limb.set_joint_positions(limb_joints)
+        limb.set_joint_positions(limb_joints, raw=False)
     else:
         #How to recover from this
         print "Invalid position requested"
