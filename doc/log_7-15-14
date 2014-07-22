@@ -1,0 +1,11 @@
+Today I got color detection working robustly and watershed detection working not-so-robustly.
+
+The main bug I was running into with color detection was that when you get a mouseclick from OpenCV, you have to reverse the x and y coordinates when you index into a numpy array (image). Documenting that here because I know I'll forget it in the future.
+
+Watershed actually works pretty well but it's very suspectible to noise, and for a obviously colored items like the orange blocks we have, it seems like overkill to work on much more.
+
+Thus, I feel comfortable moving on from object detection to the next task: visual servoing.
+
+First I need to get some unit conversions from pixels to robot units and from the IR range finder units to robot units. It's easy to get a pixel to millimeter using OpenCV camera calibration, and the Baxter SDK claims that the range finder units are in meters. But are the coordinates I get from the end effector topic in meters? I haven't been able to find a good answer for this, and if I get desperate I might break out a yardstick and see what that tells me.
+
+After the units are all straight, I want to implement a control loop where Baxter tries to center its camera over the clicked object. To simplify things, I'm going to work with just one orange block in the frame. It should be easy to command an end effector translation corresponding to the desired camera translation. Then, after the camera is aligned in the plane of the table (which we will assume is the same as Baxter's XY plane for now), it will use the IR range finder value to command its Z position down to gripping range.

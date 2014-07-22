@@ -1,0 +1,22 @@
+Whoops, I forgot to log most of last week. That's okay, because I still achieved my goals, and a lot of my documentation has moved to a Google Spreadsheet.
+
+Last week was the week of vision and this week is the week of grasping. However, the two are closely interrelated and I suspect I will spend quite a bit of time working on better vision for grasping. The end goal of this week is for Baxter to reliably servo near a block, pick it up and move without dropping it, with a stretch goal of doing the same for a round or irregularly shaped object.
+
+Grasp Tasks, roughly in order of priority:
+
+2D Alignment, assuming rectangular: find edges and align gripper to be parallel
+Use cv2.cornerHarris to detect corners
+Look around the area near the block centroid to find corners belonging to the block
+Connect these corners (what if there's more than 4?)
+OR use edge detection and HoughLines
+
+Stereovision with grasping hand + off-hand and/or head camera: goal is to get a grasp pose and a trajectory
+
+Check to see if IR rangefinder is calibrated (measuring tape) and figure out why using depth to estimate pose was not accurate
+
+Kinect for stereo (similar idea to item 2, but without doing stereo myself)
+
+Search algorithms for trajectory generation (collision avoidance--almost certainly need Kinect)
+
+Work on a polished input program that gets an end pose from the user
+
