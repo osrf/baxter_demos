@@ -15,6 +15,7 @@ from math import pi
 
 import rospy
 import baxter_interface
+from urdf_parser_py.urdf import URDF
 
 import cv, cv2, cv_bridge
 import numpy
@@ -50,6 +51,20 @@ class VisualCommand():
         self.stateidx = 0
         self.states = self.wait_centroid, self.orient, self.servo_xy, self.servo_z, self.done_state
         self.done = 0
+        #robot_urdf = URDF.load_from_parameter_server()
+
+        self.sign = 1
+        
+
+        #Check if we are exceeding the joint limit specified by robot_urdf
+        robot = URDF.from_parameter_server()
+        key = limb+"_w2"
+        for joint in robot.joints:
+            if joint.name == key:
+                break
+        
+        self.wristlim = joint.limit
+
         paramnames = ["servo_speed", "min_pose_z", "min_ir_depth"]
         paramvals = []
         for param in paramnames:
@@ -91,12 +106,22 @@ class VisualCommand():
 
     def orient(self):
         print "Orienting"
-        inc = 0.075
+        inc = pi/180
         #Turn until we are aligned with the axis provided by object_finder
         #TODO: more clever and efficient turning
+
         joint_name = self.limb + "_w2"
-        joint_angle = self.limb_iface.joint_angle(joint_name) + inc
+        joint_angle = self.limb_iface.joint_angle(joint_name)
         print joint_angle
+
+        if joint_angle > self.wristlim.upper:
+            self.sign = -1
+        elif joint_angle < self.wristlim.lower:
+            self.sign = 1
+
+        joint_angle += self.sign*inc
+
+
         self.limb_iface.set_joint_positions(dict(zip([joint_name],[joint_angle])))
 
 
@@ -104,10 +129,13 @@ class VisualCommand():
         #self.axis is neither parallel nor perpendicular to the camera x-axis
         x_axis = numpy.array([1, 0])
         axis = numpy.array( [self.axis[2]-self.axis[0], self.axis[3] - self.axis[1]] )
-        theta = numpy.dot(x_axis, axis/numpy.linalg.norm(axis))
-        print "Theta =", theta
-        thresh = 10*pi/180
-        return (abs(theta) > thresh) or (abs(theta-pi/2.0) > thresh)
+        ctheta = numpy.dot(x_axis, axis/numpy.linalg.norm(axis))
+        print "cos(theta) =", ctheta
+        thresh = 0.1
+        #Want to either be codirectional or orthogonal
+        print "Is the axis orthogonal to the camera?", (abs(ctheta) < thresh)
+        print "Is the axis codirectional with the camera?", (abs(ctheta-1) < thresh)
+        return (abs(ctheta) > thresh) and (abs(ctheta-1) > thresh)
 
     def servo_xy(self):
         print "translating in XY at speed:", self.inc
@@ -152,7 +180,7 @@ class VisualCommand():
         #Maybe experiment with making this proportional to Z-coordinate
         threshold = 10
         #threshold = (self.x_extremes[1] - self.x_extremes[0])*0.2
-        if self.disoriented():
+        if self.disoriented() and self.ir_reading > 0.15:
             print "I am disoriented"
             self.stateidx = 1
         elif abs(d[0]) > threshold and abs(d[1]) > threshold:
@@ -180,7 +208,6 @@ class VisualCommand():
         d_trans = d_rot + trans
         
         print "Final coordinate:", d_rot
-        
 
 
     def centroid_callback(self, data):

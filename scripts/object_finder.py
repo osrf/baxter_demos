@@ -34,15 +34,14 @@ class CameraSubscriber:
         self.limb = limb
         self.handler_sub = rospy.Subscriber("/cameras/"+limb+"_hand_camera/image", Image, self.callback)
         self.cv_wait = 100
+        self.cur_img = None
 
     def unsubscribe(self):
         self.handler_sub.unregister()
 
     def callback(self, data):
         self.get_data(data)
-        cv2.imshow("Hand camera", self.cur_img)
-        cv2.waitKey(self.cv_wait)
-
+        
     def get_data(self, data):
         img = cv_bridge.CvBridge().imgmsg_to_cv2(data)
         self.cur_img = img
@@ -52,6 +51,9 @@ class ObjectFinder(CameraSubscriber):
         self.gamma = gamma
 
         cv2.createTrackbar("gamma", "Processed image", int(gamma*100), 100, self.updateGamma)
+
+        cv2.createTrackbar("threshold 1", "Processed image", 80, 2000, nothing)
+        cv2.createTrackbar("threshold 2", "Processed image", 0, 2000, nothing)
 
         if method == 'edge':
             cv2.createTrackbar("threshold 1", "Processed image", 500, 2000, nothing)
@@ -84,6 +86,7 @@ class ObjectFinder(CameraSubscriber):
         self.x_extremes = (-1, -1)
         self.axis = numpy.ones((6))*-1
         self.prev_img = None
+        self.processed = None
 
     def publish(self, limb, rate = 100):
         topic = "object_tracker/"+limb+"/centroid"
@@ -133,20 +136,19 @@ class ObjectFinder(CameraSubscriber):
         self.img = self.simpleFilter()
 
         self.processed = self.detectFunction(self.img)
-        cv2.imshow("Processed image", self.processed)
         
         #Find the contour associated with self.point
         contour_img = self.processed.copy()
         contours, hierarchy = cv2.findContours(contour_img, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
         if contours is None or len(contours) == 0:
-            cv2.waitKey(self.cv_wait)
+            #cv2.waitKey(self.cv_wait)
             self.centroid = None
             return
             
         cv2.drawContours(contour_img, contours, -1, (255, 255, 255))
         contour = self.getLargestContour(contours)
         if contour == None:
-            cv2.waitKey(self.cv_wait)
+            #cv2.waitKey(self.cv_wait)
             self.centroid = None
             return
 
@@ -154,28 +156,60 @@ class ObjectFinder(CameraSubscriber):
         moments = cv2.moments(contour)
         self.centroid = ( int(moments['m10']/moments['m00'] ), int(moments['m01']/moments['m00']), 0 )
  
-       
-        self.axis = self.getObjectAxes(contour_img, contour)
+        canny = self.edgeDetect(self.img)
+        self.axis = self.getObjectAxes(canny, contour)
         if self.axis is not None:
             self.axis = numpy.hstack( (self.axis[0:2], 0, self.axis[2:4], 0) )
             cv2.line(self.cur_img, tuple(self.axis[0:2]), tuple(self.axis[3:5]), (0, 255, 0), 2)
 
         cv2.circle(img=contour_img, center=self.centroid[0:2], radius=3, color=(255, 255, 255), thickness=-1)
         
-        cv2.imshow("Hand camera", self.cur_img)
+        #cv2.imshow("Hand camera", self.cur_img)
 
-        cv2.imshow("Contours", contour_img)
-        cv2.waitKey(self.cv_wait)
+        #cv2.imshow("Processed image", self.processed)
+        #cv2.imshow("Contours", contour_img)
+        #cv2.waitKey(self.cv_wait)
         self.prev_img = self.img
 
     def getObjectAxes(self, img, contour):
+        #I suspect this rectangle stuff is slightly buggy
         rect = cv2.boundingRect(contour)
-   
-        #these parameters are, apparently, able make my computer crash...
-        rho, theta, threshold, minLineLength = 1, pi/180, 70, abs(rect[0]-rect[2])/2
-                
-        lines = cv2.HoughLinesP(img, rho, theta, threshold, minLineLength)
+        print rect
+        pad = int((rect[2]+rect[3])/8)
+        #pad = 0
+        print pad
+
+        if rect[0] < pad:
+            x = 0
+        else:
+            x = rect[0]-pad
+
+        if rect[1] < pad:
+            y = 0
+        else:
+            y = rect[1]-pad
+
+        p1 = (x, y)
+
+        x, y = rect[0]+rect[2]+pad, rect[1]+rect[3]+pad
+        
+        if x > img.shape[1]:
+            x = img.shape[1] - 1
+        if y > img.shape[0]:
+            y = img.shape[0] - 1
+
+        p2 = (x, y)
+        print p1, p2       
+        cv2.rectangle(self.cur_img, p2, p1, (0, 255, 0), 3)
+
+        subimg = img[p1[1]:p2[1], p1[0]:p2[0]]
+       
+  
+        rho, theta, threshold, minLineLength, maxLineGap= 1, pi/180, 30, 2, 5
+        
+        lines = cv2.HoughLinesP(subimg, rho, theta, threshold, minLineLength, maxLineGap)
         if lines is None:
+            print "no lines found"
             return None
         print "lines found: ", lines.shape
         lines = lines.reshape(lines.shape[1], lines.shape[2])
@@ -187,12 +221,14 @@ class ObjectFinder(CameraSubscriber):
         lines = numpy.hstack((lines, lengths.reshape((lengths.shape[0], 1)) ))
         #print lines
         lines = lines[lines[:,4].argsort()]
-        #lines = lines[::-1] #Reverse the sorted array
+        lines = lines[::-1] #Reverse the sorted array
         lines = lines[:, 0:4]
         #print lines
 
-        maxline = lines[0]
-        return maxline
+        #bestline = lines[lines.shape[0]/2]
+        bestline = lines[0]
+        bestline += numpy.tile(numpy.array(p1), 2)
+        return bestline
         
     def starDetect(self, img):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -246,7 +282,7 @@ class ObjectFinder(CameraSubscriber):
             hull = cv2.convexHull(points)
             hull = hull.reshape((hull.shape[0], 1, 2))
             cv2.fillConvexPoly(gray, hull, color=255)
-        cv2.imshow("Hand camera", img)
+        #cv2.imshow("Hand camera", img)
         return gray
 
     def watershedDetect(self, img):
@@ -354,6 +390,7 @@ class MouseListener():
             self.y_clicked = y
             self.done = True
 
+
 def cleanup():
     cv2.destroyAllWindows()
 
@@ -383,6 +420,7 @@ def main():
     rospy.init_node("baxter_object_tracker_%s" % (limb,))
 
     rospy.on_shutdown(cleanup)
+
     print("Getting robot state... ")
     rs = baxter_interface.RobotEnable(CHECK_VERSION)
     print("Enabling robot... ")
@@ -397,14 +435,20 @@ def main():
 
     cv2.setMouseCallback("Hand camera", ml.onMouse)
     while not ml.done:
+        if cam.cur_img is not None:
+            cv2.imshow("Hand camera", cam.cur_img)
+
         cv2.waitKey(cam.cv_wait)
+
+    #cv2.setMouseCallback("Hand camera", nothing)
 
     detectMethod = None
 
     cam.unsubscribe()
 
     cv2.namedWindow("Processed image")
-    cv2.namedWindow("Contours")
+    cv2.imshow("Processed image", numpy.zeros((cam.cur_img.shape)))
+    #cv2.namedWindow("Contours")
 
     print "Starting image processor"
     imgproc = ObjectFinder(args.method, (ml.x_clicked, ml.y_clicked))
@@ -424,7 +468,14 @@ def main():
         msg.axis = Polygon([Point(*imgproc.axis[0:3].tolist()), Point(*imgproc.axis[3:6].tolist())])
 
         imgproc.handler_pub.publish(msg)
-        imgproc.pub_rate.sleep()
+        if imgproc.cur_img is not None:
+            cv2.imshow("Hand camera", imgproc.cur_img)
+
+        if imgproc.processed is not None:
+            cv2.imshow("Processed image", imgproc.processed)
+
+        cv2.waitKey(imgproc.cv_wait)
+        #imgproc.pub_rate.sleep()
 
 if __name__ == "__main__":
     main()

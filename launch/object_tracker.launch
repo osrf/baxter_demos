@@ -3,6 +3,8 @@
   <arg name="limb"     default="right"/>
   <arg name="method"   default="color"/>
 
+  <param name="robot_description" textfile="$(find baxter_description)/urdf/baxter.urdf"/>
+
   <!-- Start the Joint Trajectory Action Server -->
 
   <!--node name="rsdk_joint_trajectory_action_server" pkg="baxter_interface"
