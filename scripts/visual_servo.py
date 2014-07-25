@@ -120,7 +120,6 @@ class VisualCommand():
 
         joint_angle += self.sign*inc
 
-
         self.limb_iface.set_joint_positions(dict(zip([joint_name],[joint_angle])))
 
 

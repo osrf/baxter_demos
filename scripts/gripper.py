@@ -17,8 +17,8 @@ class GripMover():
         self.gripper_if = baxter_interface.Gripper(limb)
         if not self.gripper_if.calibrated():
             self.gripper_if.calibrate()
+        self.gripper_if.open(block=True)
         self.traj = common.Trajectory(limb)
-
         #names = [limb+'_'+name for name in names]
 
         names = ['e0', 'e1', 's0', 's1', 'w0', 'w1', 'w2']

@@ -20,13 +20,14 @@ def connect_service(side):
 
 def service_request_velocity(iksvc, vel_vec, side):
     """Move in the requested direction at a constant velocity vector"""
+    #INCOMPLETE
     ns = "ExternalTools/"+side+"/PositionKinematicsNode/IKService"
     ikreq = SolvePositionIKRequest()
     limb = baxter_interface.Limb(side)
     hdr = Header(stamp=rospy.Time.now(), frame_id='base')
 
 
-def service_request(iksvc, desired_p, side):
+def service_request(iksvc, desired_p, side, blocking=False):
     ns = "ExternalTools/"+side+"/PositionKinematicsNode/IKService"
     ikreq = SolvePositionIKRequest()
     limb = baxter_interface.Limb(side)
@@ -48,7 +49,10 @@ def service_request(iksvc, desired_p, side):
                                resp.result_type)
     if (resp_seeds[0] != resp.RESULT_INVALID):
         limb_joints = dict(zip(resp.joints[0].name, resp.joints[0].position))
-        limb.set_joint_positions(limb_joints, raw=False)
+        if blocking:
+            limb.move_to_joint_positions(limb_joints)
+        else:
+            limb.set_joint_positions(limb_joints, raw=False)
     else:
         #How to recover from this
         print "Invalid position requested"

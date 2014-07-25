@@ -61,8 +61,7 @@ class ObjectFinder(CameraSubscriber):
             self.detectFunction = self.edgeDetect
         elif method == 'color':
             cv2.createTrackbar("blur", "Processed image", 12, 50, nothing)
-            cv2.createTrackbar("radius", "Processed image", 33, 128, self.updateRadius)
-            self.radius = 10
+            cv2.createTrackbar("radius", "Processed image", 22, 128, nothing)
             cv2.createTrackbar("open", "Processed image", 4, 15, nothing)
             self.detectFunction = self.colorDetect
             self.color = None
@@ -93,8 +92,8 @@ class ObjectFinder(CameraSubscriber):
         self.handler_pub = rospy.Publisher(topic, BlobInfo)
         self.pub_rate = rospy.Rate(5)
 
-    def updateRadius(self, r):
-        self.radius = r
+    #def updateRadius(self, r):
+    #    self.radius = r
 
     def updateGamma(self, g):
         #g = cv2.getTrackbarPos("gamma", "Processed image")
@@ -170,14 +169,12 @@ class ObjectFinder(CameraSubscriber):
         #cv2.imshow("Contours", contour_img)
         #cv2.waitKey(self.cv_wait)
         self.prev_img = self.img
+        self.point = self.centroid 
 
     def getObjectAxes(self, img, contour):
-        #I suspect this rectangle stuff is slightly buggy
+
         rect = cv2.boundingRect(contour)
-        print rect
         pad = int((rect[2]+rect[3])/8)
-        #pad = 0
-        print pad
 
         if rect[0] < pad:
             x = 0
@@ -204,7 +201,7 @@ class ObjectFinder(CameraSubscriber):
 
         subimg = img[p1[1]:p2[1], p1[0]:p2[0]]
        
-  
+        #These were carefully tuned Hough parameters which maybe should be rosparam'ed 
         rho, theta, threshold, minLineLength, maxLineGap= 1, pi/180, 30, 2, 5
         
         lines = cv2.HoughLinesP(subimg, rho, theta, threshold, minLineLength, maxLineGap)
@@ -217,16 +214,13 @@ class ObjectFinder(CameraSubscriber):
         #    cv2.line(self.cur_img, tuple(line[0:2]), tuple(line[2:4]), (0, 255, 0), 2)
 
         lengths = numpy.square(lines[:, 0]-lines[:, 2]) + numpy.square(lines[:, 1]-lines[:, 3])
-        #print "Sorting by length"
         lines = numpy.hstack((lines, lengths.reshape((lengths.shape[0], 1)) ))
-        #print lines
         lines = lines[lines[:,4].argsort()]
         lines = lines[::-1] #Reverse the sorted array
         lines = lines[:, 0:4]
-        #print lines
 
         #bestline = lines[lines.shape[0]/2]
-        bestline = lines[0]
+        bestline = lines[0] #Get the longest line
         bestline += numpy.tile(numpy.array(p1), 2)
         return bestline
         
@@ -337,46 +331,53 @@ class ObjectFinder(CameraSubscriber):
     def colorDetect(self, img):
         #Blur the image to get rid of those annoying speckles
         blur_radius = cv2.getTrackbarPos("blur", "Processed image")
+        radius = cv2.getTrackbarPos("radius", "Processed image")
+        open_radius = cv2.getTrackbarPos("open", "Processed image")
+
         blur_radius = blur_radius*2-1
+
+        blur_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(numpy.uint8)
         if blur_radius > 0:
             blur_img = cv2.GaussianBlur(img, (blur_radius, blur_radius), 0)
         else:
             blur_img = img
 
-        #Get color of point in image
-        blur_img = cv2.cvtColor(blur_img, cv2.COLOR_BGR2HSV).astype(numpy.uint8)
-        #print self.point
         if self.color == None:
             self.color = blur_img[self.point[1], self.point[0]]
-        radius = self.radius
+
+        return self.colorSegmentation(blur_img, self.point, blur_radius, radius, open_radius, self.color)
+
+    #now extra portable
+    def colorSegmentation(self, img, point, blur_radius, radius, open_radius, color):
+
+        #Get color of point in image
+        #print self.point
         #Grab the R, G, B channels as separate matrices
         #use cv2.threshold on each of them
         #AND the three images together
         bw = numpy.ones(img.shape[0:2], numpy.uint8)
         maxvals = [179, 255, 255]
-        for i in [0, 1]:
-            #if i == 3:
-            #    radius += radius/5 #Allow value to be more forgiving
-            minval = self.color[i] - radius
-            maxval = self.color[i] + radius
-            if radius > self.color[i]:
+        for i in range(3):
+            minval = color[i] - radius
+            maxval = color[i] + radius
+            if radius > color[i]:
                 minval = 0
-            elif radius + self.color[i] > maxvals[i]:
-                minval = self.color[i] - radius
+            elif radius + color[i] > maxvals[i]:
+                minval = color[i] - radius
 
-            channel = blur_img[:, :, i]
+            channel = img[:, :, i]
             retval, minthresh = cv2.threshold(channel, minval, 255, cv2.THRESH_BINARY)
             retval, maxthresh = cv2.threshold(channel, maxval, 255, cv2.THRESH_BINARY_INV)
             bw = cv2.bitwise_and(bw, minthresh)
             bw = cv2.bitwise_and(bw, maxthresh)
         bw *= 255
         
-        open_radius = cv2.getTrackbarPos("open", "Processed image")
         if open_radius != 0:
             open_kernel = numpy.array([open_radius, open_radius])
 
             bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, open_kernel, iterations = 2)
         return bw
+
 
 class MouseListener():
     def __init__(self):
