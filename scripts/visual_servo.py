@@ -43,7 +43,6 @@ class VisualCommand():
         #self.x_extremes = None
         self.axes = None
         self.ir_reading = None
-        self.cam_matrix = None
         self.iksvc = iksvc
         self.limb = limb
         self.limb_iface = baxter_interface.Limb(limb)
@@ -54,7 +53,6 @@ class VisualCommand():
         #robot_urdf = URDF.load_from_parameter_server()
 
         self.sign = 1
-        
 
         #Check if we are exceeding the joint limit specified by robot_urdf
         robot = URDF.from_parameter_server()
@@ -85,7 +83,8 @@ class VisualCommand():
         self.ir_sub = rospy.Subscriber(topic, Range, self.ir_callback)
         topic = "/cameras/"+self.limb+"_hand_camera/camera_info"
         #may bring this back if we do serious unit conversions
-        self.info_sub = rospy.Subscriber(topic, CameraInfo, self.info_callback)
+        #self.info_sub = rospy.Subscriber(topic, CameraInfo, self.info_callback)
+
 
     def command_ik(self, direction):
         """Use the Rethink IK service to figure out a desired joint position"""
@@ -177,9 +176,8 @@ class VisualCommand():
         if self.done:
             self.done_state()
             return
-        #Maybe experiment with making this proportional to Z-coordinate
+        #Maybe experiment with making this proportional to Z-coordinate or contour size
         threshold = 10
-        #threshold = (self.x_extremes[1] - self.x_extremes[0])*0.2
         if self.disoriented() and self.ir_reading > 0.15:
             print "I am disoriented"
             self.stateidx = 1
@@ -191,24 +189,6 @@ class VisualCommand():
             self.stateidx = 4
         
         self.states[self.stateidx]()
-
-    def plan_execute_trajectory(self):
-        #INCOMPLETE
-        (trans, rot) = self.tf_listener.lookupTransform('/'+self.limb+'_hand_camera', '/base', rospy.Time(0))
-        print "Translation relative to base:", trans
-        R = tf.transformations.quaternion_matrix(rot)[:3, :3]
-        print "Rotation matrix relative to base:", R
-        #Figure out goal pose based on self.centroid and height of the table
-        d = numpy.concatenate( (self.centroid, numpy.array([self.ir_reading-self.min_ir_depth ])) )
-        #Apply the camera matrix to convert d to meters
-        d_scaled = numpy.dot( numpy.linalg.inv(self.cam_matrix), d)
-        print "Scaled direction in camera frame:", d_scaled
-
-        d_rot = numpy.dot(R, d_scaled)
-        d_trans = d_rot + trans
-        
-        print "Final coordinate:", d_rot
-
 
     def centroid_callback(self, data):
         
@@ -226,19 +206,11 @@ class VisualCommand():
         self.axis = numpy.concatenate( (numpy.array( unmap(data.axis.points[0]) ), numpy.array( unmap(data.axis.points[1])) ) )
 
         print self.axis
-        #self.plan_execute_trajectory()
         self.visual_servo()
 
     def ir_callback(self, data):
         self.ir_reading = data.range
 
-    def info_callback(self, data):
-        self.cam_matrix = numpy.array(data.K).reshape(3, 3) #3x3 Projection matrix
-        print self.cam_matrix
-        # Given a 3D point [X Y Z]', the projection (x, y) of the point onto
-        #  the rectified image is given by:
-        #  [x y w]' = K * [X Y Z ]'
-        self.info_sub.unregister() #Only subscribe once
         
 
 def main():
