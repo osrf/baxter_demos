@@ -1,0 +1,3 @@
+I installed the Asus Xtion today on the workspace machine. This was sort of annoying because roslaunch openni_launch openni.launch was unable to interface with the device, even though it could see the device connected on USB. I solved this by editing /etc/openni/GlobalDefaults.ini and uncommenting the line "UsbInterface=2".
+
+The Xtion is slightly preferred to the Kinect for use with Baxter because it is smaller and easier to mount somewhere on Baxter's body. However, unlike the Kinect, its USB cord is not long enough to connect to the computer while it is mounted on Baxter.
