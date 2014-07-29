@@ -169,6 +169,8 @@ class VisualCommand():
         self.gripper_if.close()
         if not self.gripper_if.gripping():
             print "oh no! I'm not gripping anything"
+        else:
+            self.done = 1 
 
     def done_state(self):
         self.done = 1
