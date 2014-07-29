@@ -88,6 +88,13 @@ class ButtonListener:
         rospy.Subscriber(topic, DigitalIOState, self.button_callback)
         self.pressed = False
 
+    def getButtonPress(self, limb, limbInterface, traj):
+        #Get points from user
+        jointdict = limbInterface.joint_angles()
+        print jointdict
+        return [jointdict[limb+"_"+name] for name in traj.jointnames]
+
+
     def button_callback(self, data):
         if data.state == 1:
             self.pressed = True

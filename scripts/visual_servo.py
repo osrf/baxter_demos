@@ -46,9 +46,10 @@ class VisualCommand():
         self.iksvc = iksvc
         self.limb = limb
         self.limb_iface = baxter_interface.Limb(limb)
+        self.gripper_if = baxter_interface.Gripper(limb)
         self.tf_listener = tf.TransformListener()
         self.stateidx = 0
-        self.states = self.wait_centroid, self.orient, self.servo_xy, self.servo_z, self.done_state
+        self.states = self.wait_centroid, self.orient, self.servo_xy, self.servo_z, self.grip_state, self.done_state
         self.done = 0
         #robot_urdf = URDF.load_from_parameter_server()
 
@@ -66,7 +67,7 @@ class VisualCommand():
         paramnames = ["servo_speed", "min_pose_z", "min_ir_depth"]
         paramvals = []
         for param in paramnames:
-            topic = "/visual_servo/"
+            topic = "/servo_to_object/"
             paramvals.append(rospy.get_param(topic+param))
         self.inc, self.min_pose_z, self.min_ir_depth = tuple(paramvals)
         self.goal_pos = (rospy.get_param(topic+"camera_x")*float(rospy.get_param(topic+"goal_ratio_x")), rospy.get_param(topic+"camera_y")*float(rospy.get_param(topic+"goal_ratio_y")))
@@ -164,6 +165,11 @@ class VisualCommand():
         direction = numpy.array([0, 0, -self.inc])
         self.command_ik(direction)
 
+    def grip_state(self):
+        self.gripper_if.close()
+        if not self.gripper_if.gripping():
+            print "oh no! I'm not gripping anything"
+
     def done_state(self):
         self.done = 1
         print "Done"
@@ -177,6 +183,9 @@ class VisualCommand():
         if self.done:
             self.done_state()
             return
+
+        #So this is not a proper state machine right now. In fact it's pretty messy.
+        
         #Maybe experiment with making this proportional to Z-coordinate or contour size
         threshold = 10
         if self.disoriented() and self.ir_reading > 0.15:
@@ -186,6 +195,8 @@ class VisualCommand():
             self.stateidx = 2
         elif self.outOfRange(): 
             self.stateidx = 3
+        elif self.gripper_if.gripping():
+            self.stateidx = 5
         else:
             self.stateidx = 4
         

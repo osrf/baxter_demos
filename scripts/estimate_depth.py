@@ -37,6 +37,7 @@ class DepthEstimator:
         self.ir_reading = None
         self.camera_model = None
         self.goal_pose = None
+        self.done = False
 
         self.min_ir_depth = rospy.get_param("/visual_servo/min_ir_depth")
         self.object_height = rospy.get_param("/estimate_depth/object_height")
@@ -73,7 +74,9 @@ class DepthEstimator:
             self.goal_pose = Pose(position=Point(*pos), orientation=Quaternion(*quat))
             # unregister once published. this is risky design, what if the position changes while waiting to publish?
             if self.goal_pose is not None:
-                self.centroid_sub.unregister()
+                #self.centroid_sub.unregister()
+                print "going to the place"
+                self.done = True
             else:
                 #We want to decrease Z to get a valid IR reading
                 goal_pose = self.limb_iface.endpoint_pose()
@@ -132,11 +135,6 @@ class DepthEstimator:
         self.camera_model.fromCameraInfo(data)
         self.info_sub.unregister() #Only subscribe once
 
-def command_position(iksvc, limb, pose):
-    p = [pose.position.x, pose.position.y, pose.position.z]+[pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]
-    print p
-    ik_command.service_request(iksvc, p, limb, blocking=True)
-    done = True
 
 
 def main():
@@ -154,19 +152,15 @@ def main():
 
     rospy.init_node("estimate_depth")
     
-    iksvc, ns = ik_command.connect_service(limb)
 
     de = DepthEstimator(limb)
     de.subscribe()
-    #de.publish()
+    de.publish()
     print "subscribed"
     rate = rospy.Rate(100)
     while not rospy.is_shutdown():
         if de.goal_pose is not None:
-            # Publish goal_pose once
-            #de.handler_pub.publish(de.goal_pose)
-            command_position(iksvc, limb, de.goal_pose)
-            return
+            de.handler_pub.publish(de.goal_pose)
         rate.sleep()
 
 if __name__ == "__main__":

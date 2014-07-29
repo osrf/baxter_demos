@@ -37,9 +37,6 @@ class GripMover():
             else:
                 print "Oh no! I'm not gripping anything!"
 
-    def isGripping(self):
-        return self.gripper_if.force > 5 #?!?!?
-
     def move(self):
         jointdict = self.limb_if.joint_angles()
         curjoints = [jointdict[self.limb+"_"+name] for name in self.traj.jointnames]
