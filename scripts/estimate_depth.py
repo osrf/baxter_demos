@@ -22,6 +22,8 @@ from geometry_msgs.msg import Pose, Point
 
 #TODO: use axis info from .object_tracker/centroid to command a pose
 
+inc = 0.05
+
 class DepthEstimator:
     def __init__(self, limb):
         self.tf_listener = tf.TransformListener()
@@ -57,29 +59,49 @@ class DepthEstimator:
             # Keep the same orientation
             quat = self.limb_iface.endpoint_pose()['orientation']
             self.goal_pose = Pose(position=Point(*pos), orientation=quat)
-            print self.goal_pose
             # unregister once published. this is risky design, what if the position changes while waiting to publish?
-            self.centroid_sub.unregister()
+            if self.goal_pose is not None:
+                self.centroid_sub.unregister()
+            else:
+                #We want to decrease Z to get a valid IR reading
+                goal_pose = self.limb_iface.endpoint_pose()
+                goal_pose["position"].z -= inc
+                self.goal_pose = goal_pose
             
 
     def solve_goal_pose(self):
+        if self.ir_reading is None:
+            return None
         # Project centroid into 3D coordinates
-        vec = numpy.array( self.camera_model.projectPixelTo3dRay(self.centroid) )
+        # TODO: less hardcoding
+        center = (self.centroid[0] - 320, self.centroid[1] - 200) 
+        vec = numpy.array( self.camera_model.projectPixelTo3dRay(center) )
         # Scale it by the IR reading
         d_cam = ( self.ir_reading - self.min_ir_depth ) * vec
         d_cam = numpy.concatenate((d_cam, numpy.ones(1)))
+        print "Camera vector:", d_cam
+
         # Now transform into the world frame
         try:
-            (trans, rot) = self.tf_listener.lookupTransform('/'+self.limb+'_hand_camera', '/base', rospy.Time(0))
+            #self.tf_listener.waitForTransform('/'+self.limb+'_hand_camera', '/base', rospy.Time(), rospy.Duration(4))
+            #(trans, rot) = self.tf_listener.lookupTransform('/'+self.limb+'_hand_camera', '/base', rospy.Time(0))
+
+            self.tf_listener.waitForTransform('/base', '/'+self.limb+'_hand_camera', rospy.Time(), rospy.Duration(4))
+            (trans, rot) = self.tf_listener.lookupTransform('/base', '/'+self.limb+'_hand_camera', rospy.Time(0))
+
         except tf.ExtrapolationException:
             return None
         
         camera_to_base = tf.transformations.compose_matrix(translate=trans, angles=tf.transformations.euler_from_quaternion(rot))
+
         d_base = numpy.dot(camera_to_base, d_cam)
         return d_base[0:3]
 
     def ir_callback(self, data):
         self.ir_reading = data.range
+        if self.ir_reading > 60:
+            print "Invalid IR reading"
+            self.ir_reading = 0.4
 
     def info_callback(self, data):
         # Get a camera model object using image_geometry and the camera_info topic

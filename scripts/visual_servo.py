@@ -139,6 +139,7 @@ class VisualCommand():
         print "translating in XY at speed:", self.inc
         d = self.centroid - self.goal_pos
 
+        self.tf_listener.waitForTransform('/'+self.limb+'_hand_camera', '/base', rospy.Time(), rospy.Duration(4.0))
         (trans, rot) = self.tf_listener.lookupTransform('/'+self.limb+'_hand_camera', '/base', rospy.Time(0))
         R = tf.transformations.quaternion_matrix(rot)[:3, :3]
         d = numpy.concatenate( (d, numpy.zeros(1)) )

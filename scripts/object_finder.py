@@ -345,51 +345,7 @@ class ObjectFinder(CameraSubscriber):
         if self.color == None:
             self.color = blur_img[self.point[1], self.point[0]]
 
-        return self.colorSegmentation(blur_img, self.point, blur_radius, radius, open_radius, self.color)
-
-    #now extra portable
-    def colorSegmentation(self, img, point, blur_radius, radius, open_radius, color):
-
-        #Get color of point in image
-        #print self.point
-        #Grab the R, G, B channels as separate matrices
-        #use cv2.threshold on each of them
-        #AND the three images together
-        bw = numpy.ones(img.shape[0:2], numpy.uint8)
-        maxvals = [179, 255, 255]
-        for i in range(3):
-            minval = color[i] - radius
-            maxval = color[i] + radius
-            if radius > color[i]:
-                minval = 0
-            elif radius + color[i] > maxvals[i]:
-                minval = color[i] - radius
-
-            channel = img[:, :, i]
-            retval, minthresh = cv2.threshold(channel, minval, 255, cv2.THRESH_BINARY)
-            retval, maxthresh = cv2.threshold(channel, maxval, 255, cv2.THRESH_BINARY_INV)
-            bw = cv2.bitwise_and(bw, minthresh)
-            bw = cv2.bitwise_and(bw, maxthresh)
-        bw *= 255
-        
-        if open_radius != 0:
-            open_kernel = numpy.array([open_radius, open_radius])
-
-            bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, open_kernel, iterations = 2)
-        return bw
-
-
-class MouseListener():
-    def __init__(self):
-        self.done = False
-        self.x_clicked = -1
-        self.y_clicked = -1
-    def onMouse(self, event, x, y, flags, param):
-        if event == cv2.EVENT_LBUTTONUP or event == cv2.EVENT_LBUTTONDOWN:
-            print "Got mouse event:", x, ",", y
-            self.x_clicked = x
-            self.y_clicked = y
-            self.done = True
+        return common.colorSegmentation(blur_img, blur_radius, radius, open_radius, self.color)
 
 
 def cleanup():
@@ -415,7 +371,7 @@ def main():
     args = parser.parse_args(rospy.myargv()[1:])
     limb = args.limb
     if args.method is None:
-        args.method = 'watershed'
+        args.method = 'color'
 
     print("Initializing node... ")
     rospy.init_node("baxter_object_tracker_%s" % (limb,))
@@ -432,7 +388,7 @@ def main():
     cam.subscribe(limb)
 
     print("Click on the object you would like to track, then press any key to continue.")
-    ml = MouseListener()
+    ml = common.MouseListener()
 
     cv2.setMouseCallback("Hand camera", ml.onMouse)
     while not ml.done:
