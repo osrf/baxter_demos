@@ -6,6 +6,7 @@ import baxter_interface
 import cv, cv2, cv_bridge
 import numpy
 import tf
+from math import atan2, pi
 
 import common
 import ik_command
@@ -16,13 +17,16 @@ from baxter_demos.msg import BlobInfo
 
 from sensor_msgs.msg import Image, CameraInfo, Range
 
-from geometry_msgs.msg import Pose, Point
+from geometry_msgs.msg import Pose, Point, Quaternion
 
 #going to write something similar for point cloud data (publishes to same topic. might be bad practice?)
 
 #TODO: use axis info from .object_tracker/centroid to command a pose
 
 inc = 0.05
+
+def unmap(points):
+    return [points.x, points.y]
 
 class DepthEstimator:
     def __init__(self, limb):
@@ -35,6 +39,7 @@ class DepthEstimator:
         self.goal_pose = None
 
         self.min_ir_depth = rospy.get_param("/visual_servo/min_ir_depth")
+        self.object_height = rospy.get_param("/estimate_depth/object_height")
         
     def publish(self, rate=100):
         #TODO: Estimate orientation as well as position
@@ -52,13 +57,20 @@ class DepthEstimator:
 
     def centroid_callback(self, data):
         self.centroid = (data.centroid.x, data.centroid.y)
+
         if self.centroid is not (-1, -1) and self.camera_model is not None:
+            #make this more readable
+            self.axis = numpy.concatenate( (numpy.array( unmap(data.axis.points[0]) ), numpy.array( unmap(data.axis.points[1])) ) )
+
             pos = self.solve_goal_pose()
             if pos is None:
                 return
-            # Keep the same orientation
-            quat = self.limb_iface.endpoint_pose()['orientation']
-            self.goal_pose = Pose(position=Point(*pos), orientation=quat)
+            #quat = self.limb_iface.endpoint_pose()['orientation']
+            #Calculate desired orientation
+            theta = self.calculate_angle()
+            quat = tf.transformations.quaternion_from_euler(-pi, 0, theta)
+
+            self.goal_pose = Pose(position=Point(*pos), orientation=Quaternion(*quat))
             # unregister once published. this is risky design, what if the position changes while waiting to publish?
             if self.goal_pose is not None:
                 self.centroid_sub.unregister()
@@ -68,6 +80,17 @@ class DepthEstimator:
                 goal_pose["position"].z -= inc
                 self.goal_pose = goal_pose
             
+    def calculate_angle(self):
+        axis = self.axis[2:4] - self.axis[0:2]
+        theta1 = atan2(axis[1], axis[0])
+
+        ortho = numpy.array((axis[1], -axis[0]))
+        theta2 = atan2(ortho[1], ortho[0])
+
+        if abs(theta2) < abs(theta1):
+            return -theta2
+        else:
+            return -theta1
 
     def solve_goal_pose(self):
         if self.ir_reading is None:
@@ -77,7 +100,7 @@ class DepthEstimator:
         center = (self.centroid[0] - 320, self.centroid[1] - 200) 
         vec = numpy.array( self.camera_model.projectPixelTo3dRay(center) )
         # Scale it by the IR reading
-        d_cam = ( self.ir_reading - self.min_ir_depth ) * vec
+        d_cam = ( self.ir_reading - self.min_ir_depth - self.object_height ) * vec
         d_cam = numpy.concatenate((d_cam, numpy.ones(1)))
         print "Camera vector:", d_cam
 
@@ -109,6 +132,12 @@ class DepthEstimator:
         self.camera_model.fromCameraInfo(data)
         self.info_sub.unregister() #Only subscribe once
 
+def command_position(iksvc, limb, pose):
+    p = [pose.position.x, pose.position.y, pose.position.z]+[pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]
+    print p
+    ik_command.service_request(iksvc, p, limb, blocking=True)
+    done = True
+
 
 def main():
     arg_fmt = argparse.RawDescriptionHelpFormatter
@@ -125,17 +154,20 @@ def main():
 
     rospy.init_node("estimate_depth")
     
+    iksvc, ns = ik_command.connect_service(limb)
+
     de = DepthEstimator(limb)
     de.subscribe()
-    de.publish()
+    #de.publish()
     print "subscribed"
-
+    rate = rospy.Rate(100)
     while not rospy.is_shutdown():
         if de.goal_pose is not None:
             # Publish goal_pose once
-            de.handler_pub.publish(de.goal_pose)
+            #de.handler_pub.publish(de.goal_pose)
+            command_position(iksvc, limb, de.goal_pose)
             return
-        de.pub_rate.sleep()
+        rate.sleep()
 
 if __name__ == "__main__":
     main()

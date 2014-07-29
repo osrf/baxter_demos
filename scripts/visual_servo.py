@@ -126,7 +126,8 @@ class VisualCommand():
     def disoriented(self):
         #self.axis is neither parallel nor perpendicular to the camera x-axis
         x_axis = numpy.array([1, 0])
-        axis = numpy.array( [self.axis[2]-self.axis[0], self.axis[3] - self.axis[1]] )
+        #axis = numpy.array( [self.axis[2]-self.axis[0], self.axis[3] - self.axis[1]] )
+        axis = self.axis[2:4] - self.axis[0:2]
         ctheta = numpy.dot(x_axis, axis/numpy.linalg.norm(axis))
         print "cos(theta) =", ctheta
         thresh = 0.1

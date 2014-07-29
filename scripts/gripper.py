@@ -10,7 +10,6 @@ import common
 from std_msgs.msg import Bool
 
 class GripMover():
-
     def __init__(self, limb):
         self.limb = limb
         self.limb_if = baxter_interface.Limb(limb)
@@ -45,7 +44,7 @@ class GripMover():
         jointdict = self.limb_if.joint_angles()
         curjoints = [jointdict[self.limb+"_"+name] for name in self.traj.jointnames]
         jcommands = [self.final_jcommand[name] for name in self.traj.jointnames]
-        self.traj.add_point(jcommands, 15.0)
+        self.traj.add_point(jcommands, 8.0)
         self.traj.start()
         self.traj.wait()
 
