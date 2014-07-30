@@ -18,6 +18,7 @@ import baxter_interface
 import cv, cv2, cv_bridge
 import numpy
 import tf
+import camera_calibration_parser
 
 from math import cos, sin
 
@@ -70,15 +71,15 @@ class VisualCalibrator():
         self.contour_img = numpy.zeros((640, 400))
         self.clickpoint = None
         self.pointcloud = None
-        self.depth_msg = None
+        self.ir_msg = None
         self.color_msg = None
         self.camera_model = image_geometry.StereoCameraModel()
+        self.camera_model_init()
         self.color = None
 
         self.point_sub = rospy.Subscriber("/camera/depth_registered/disparity", DisparityImage, self.depth_assign)
         self.img_sub = rospy.Subscriber("/camera/rgb/image_color", Image, self.color_assign)
-        self.depth_info_sub = rospy.Subscriber("/camera/depth/camera_info", CameraInfo, self.depth_cam_callback)
-        self.color_info_sub = rospy.Subscriber("/camera/rgb/camera_info", CameraInfo, self.color_cam_callback)
+        
 
     def setClickpoint(self, x, y):
         self.clickpoint = (x, y)
@@ -86,30 +87,17 @@ class VisualCalibrator():
     def depth_assign(self, data):
         self.disparity_img = cv_bridge.CvBridge().imgmsg_to_cv2( data.image )
 
-    def depth_cam_callback(self, data):
-        print "Got depth camera info"
-        self.depth_msg = data
-
-        if self.color_msg is not None:
-            self.camera_model_init()
-
-    def color_cam_callback(self, data):
-    
-        print "Got color camera info"
-        self.color_msg = data
-
-        if self.depth_msg is not None:
-            self.camera_model_init()
-        
 
     def camera_model_init(self):
         print "Initializing camera model"
-        print self.color_msg.D
-        print self.depth_msg.D
-        self.camera_model.fromCameraInfo(self.color_msg, self.depth_msg)
+        path = rospy.get_param("/visual_calib/yaml_path")
+        # Parse cameraInfo objects from yaml files
+        color_cameraInfo = camera_calibration_parser.parse_yaml(path+"rgb_calib.yaml")
+        print color_cameraInfo
+        ir_cameraInfo = camera_calibration_parser.parse_yaml(path+"ir_calib.yaml")
+        print ir_cameraInfo
+        self.camera_model.fromCameraInfo(color_cameraInfo, ir_cameraInfo)
 
-        self.depth_info_sub.unregister()
-        self.color_info_sub.unregister()
         
     def color_assign(self, data):
         self.img_2d = cv_bridge.CvBridge().imgmsg_to_cv2(data)
@@ -274,7 +262,7 @@ def main():
     ml = common.MouseListener()
 
     cv2.setMouseCallback("Camera", ml.onMouse)
-    while not ml.done:
+    while not ml.done and not rospy.is_shutdown():
         if calib.img_2d is not None:
             cv2.imshow("Camera", calib.img_2d)
 

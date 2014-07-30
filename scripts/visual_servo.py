@@ -36,7 +36,6 @@ from sensor_msgs.msg import (
 
 from geometry_msgs.msg import(Point)
 
-#TODO: Parametrize
 class VisualCommand():
     def __init__(self, iksvc, limb):
         self.centroid = None
@@ -169,6 +168,7 @@ class VisualCommand():
         self.gripper_if.close()
         if not self.gripper_if.gripping():
             print "oh no! I'm not gripping anything"
+            self.gripper_if.open()
         else:
             self.done = 1 
 
@@ -208,7 +208,7 @@ class VisualCommand():
         
         self.centroid = numpy.array((data.centroid.x, data.centroid.y))
         print "centroid:", self.centroid
-        #self.x_extremes = (data.xmin, data.xmax)
+
         if self.centroid[0] == -1 or self.centroid[1] == -1:
             print "Waiting on centroid from object_finder"
             self.stateidx = 0

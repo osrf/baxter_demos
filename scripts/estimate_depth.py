@@ -19,11 +19,6 @@ from sensor_msgs.msg import Image, CameraInfo, Range
 
 from geometry_msgs.msg import Pose, Point, Quaternion
 
-#going to write something similar for point cloud data (publishes to same topic. might be bad practice?)
-
-#TODO: use axis info from .object_tracker/centroid to command a pose
-
-inc = 0.05
 
 def unmap(points):
     return [points.x, points.y]
@@ -41,6 +36,9 @@ class DepthEstimator:
 
         self.min_ir_depth = rospy.get_param("/visual_servo/min_ir_depth")
         self.object_height = rospy.get_param("/estimate_depth/object_height")
+        self.inc = rospy.get_param("/visual_servo/servo_speed")
+        self.camera_x = rospy.get_param("/visual_servo/camera_x")
+        self.camera_y = rospy.get_param("/visual_servo/camera_y")
         
     def publish(self, rate=100):
         #TODO: Estimate orientation as well as position
@@ -75,12 +73,11 @@ class DepthEstimator:
             # unregister once published. this is risky design, what if the position changes while waiting to publish?
             if self.goal_pose is not None:
                 #self.centroid_sub.unregister()
-                print "going to the place"
                 self.done = True
             else:
                 #We want to decrease Z to get a valid IR reading
                 goal_pose = self.limb_iface.endpoint_pose()
-                goal_pose["position"].z -= inc
+                goal_pose["position"].z -= self.inc
                 self.goal_pose = goal_pose
             
     def calculate_angle(self):
@@ -109,9 +106,6 @@ class DepthEstimator:
 
         # Now transform into the world frame
         try:
-            #self.tf_listener.waitForTransform('/'+self.limb+'_hand_camera', '/base', rospy.Time(), rospy.Duration(4))
-            #(trans, rot) = self.tf_listener.lookupTransform('/'+self.limb+'_hand_camera', '/base', rospy.Time(0))
-
             self.tf_listener.waitForTransform('/base', '/'+self.limb+'_hand_camera', rospy.Time(), rospy.Duration(4))
             (trans, rot) = self.tf_listener.lookupTransform('/base', '/'+self.limb+'_hand_camera', rospy.Time(0))
 
@@ -134,7 +128,6 @@ class DepthEstimator:
         self.camera_model = image_geometry.PinholeCameraModel()
         self.camera_model.fromCameraInfo(data)
         self.info_sub.unregister() #Only subscribe once
-
 
 
 def main():
