@@ -9,7 +9,15 @@
 
 
   <node pkg="baxter_demos" name="object_finder" type="object_finder.py"
-  args="--limb $(arg limb) --method $(arg method)" required="true"/>
+  args="--limb $(arg limb) --method $(arg method)" required="true">
+
+    <!-- Parameters for Hough line detection-->
+    <param name="rho" value="1"/>
+    <param name="theta" value="3.14159265359/180"/>
+    <param name="threshold" value="30"/>
+    <param name="minLineLength" value="2"/>
+    <param name="maxLineGap" value="5"/>
+  </node>
   
   <node pkg="baxter_demos" name="estimate_depth" type="estimate_depth.py"
   args="--limb $(arg limb)">

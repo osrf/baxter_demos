@@ -2,7 +2,8 @@
 
 """Simple Object Tracker by Jackie Kay (jackie@osrfoundation.org)
 User selects a detection method and an object in Baxter's hand camera view.
-This node returns the centroid of the desired object in the camera frame.
+This node returns the centroid of the desired object in the camera frame
+and the axis through an object with a straight edge.
 """
 
 import sys
@@ -16,24 +17,32 @@ import cv, cv2, cv_bridge
 import numpy
 from scipy.ndimage import label
 import tf
-from sensor_msgs.msg import (
-    Image,
-)
 
-from baxter_demos.msg import (
-    BlobInfo
-)
-
+from sensor_msgs.msg import Image
+from baxter_demos.msg import BlobInfo
 from geometry_msgs.msg import(
-    Point, Polygon
+    Point,
+    Polygon
 )
 
+raw_win = "Hand camera"
+processed_win = "Processed image" 
+node_name = "object_finder"
+
+def getHoughArgs(limb):
+    names = ["rho", "theta", "threshold", "minLineLength", "maxLineGap"]
+    node_full_name = node_name+"/"+limb+"/"
+    return [rospy.get_param(node_full_name+name) for name in names]
 
 class CameraSubscriber:
-    def subscribe(self, limb):
+    """Subscribe to the hand camera image and convert the message to an OpenCV-
+    friendly format"""
+       
+    def subscribe(self, limb, cv_wait = 100):
         self.limb = limb
-        self.handler_sub = rospy.Subscriber("/cameras/"+limb+"_hand_camera/image", Image, self.callback)
-        self.cv_wait = 100
+        self.handler_sub = rospy.Subscriber("/cameras/"+limb+"_hand_camera/image",
+                                            Image, self.callback)
+        self.cv_wait = cv_wait
         self.cur_img = None
 
     def unsubscribe(self):
@@ -50,35 +59,45 @@ class ObjectFinder(CameraSubscriber):
     def __init__(self, method, point, gamma = 1):
         self.gamma = gamma
 
-        cv2.createTrackbar("gamma", "Processed image", int(gamma*100), 100, self.updateGamma)
+        cv2.createTrackbar("gamma", processed_win, int(gamma*100), 100, self.updateGamma)
 
-        cv2.createTrackbar("threshold 1", "Processed image", 80, 2000, nothing)
-        cv2.createTrackbar("threshold 2", "Processed image", 0, 2000, nothing)
+        cv2.createTrackbar("threshold 1", processed_win, 80, 2000, nothing)
+        cv2.createTrackbar("threshold 2", processed_win, 0, 2000, nothing)
 
         if method == 'edge':
-            cv2.createTrackbar("threshold 1", "Processed image", 500, 2000, nothing)
-            cv2.createTrackbar("threshold 2", "Processed image", 10, 2000, nothing)
+            cv2.createTrackbar("threshold 1", processed_win, 500, 2000, nothing)
+            cv2.createTrackbar("threshold 2", processed_win, 10, 2000, nothing)
             self.detectFunction = self.edgeDetect
+
         elif method == 'color':
-            cv2.createTrackbar("blur", "Processed image", 12, 50, nothing)
-            cv2.createTrackbar("radius", "Processed image", 22, 128, nothing)
-            cv2.createTrackbar("open", "Processed image", 4, 15, nothing)
+            cv2.createTrackbar("blur", processed_win, 12, 50, nothing)
+            cv2.createTrackbar("radius", processed_win, 22, 128, nothing)
+            cv2.createTrackbar("open", processed_win, 4, 15, nothing)
             self.detectFunction = self.colorDetect
             self.color = None
 
         elif method == 'star':
-            maxSize = 45 # Maximum number of filters to apply?
-            responseThreshold = 40 # higher = fewer features retrieved
-            lineThresholdProjected = 15  # maximum ratio between Harris of responses. higher = eliminates more edges
-            lineThresholdBinarized = 20 #maximum ratio between Harris of sizes. higher = more points
-            cv2.createTrackbar("Response threshold", "Processed image", 20, 90, self.updateDetector)
-            cv2.createTrackbar("Projected line threshold", "Processed image", 3, 30, self.updateDetector)
-            cv2.createTrackbar("Binarized line threshold", "Processed image", 3, 30, self.updateDetector)
-            self.detector = cv2.StarDetector(maxSize, responseThreshold, lineThresholdProjected, lineThresholdBinarized) 
+            # Maximum number of filters to apply?
+            maxSize = 45
+            # higher = fewer features retrieved
+            responseThreshold = 40
+            # maximum ratio between Harris of responses. higher = fewer edges
+            lineThresholdProjected = 15
+            #maximum ratio between Harris of sizes. higher = more points
+            lineThresholdBinarized = 20
+            cv2.createTrackbar("Response threshold", processed_win, 20, 90,
+                                self.updateDetector)
+            cv2.createTrackbar("Projected line threshold", processed_win, 3, 30,
+                                self.updateDetector)
+            cv2.createTrackbar("Binarized line threshold", processed_win, 3, 30,
+                                self.updateDetector)
+            self.detector = cv2.StarDetector(maxSize, responseThreshold,
+                                    lineThresholdProjected, lineThresholdBinarized) 
             self.detectFunction = self.starDetect
+
         elif method == 'watershed':
             self.detectFunction = self.watershedDetect
-            cv2.createTrackbar("blur", "Processed image", 4, 15, nothing)
+            cv2.createTrackbar("blur", processed_win, 4, 15, nothing)
 
         self.point = point
         self.centroid = (-1, -1, -1)
@@ -92,30 +111,30 @@ class ObjectFinder(CameraSubscriber):
         self.handler_pub = rospy.Publisher(topic, BlobInfo)
         self.pub_rate = rospy.Rate(5)
 
-    #def updateRadius(self, r):
-    #    self.radius = r
-
     def updateGamma(self, g):
-        #g = cv2.getTrackbarPos("gamma", "Processed image")
         self.gamma = float(g)/100.0
 
     def updateDetector(self):
         maxSize = 45
-        responseThreshold = cv2.getTrackbarPos("Response threshold", "Processed image")
-        lineThresholdProjected = cv2.getTrackbarPos("Projected line threshold", "Processed image")
-        lineThresholdBinarized = cv2.getTrackbarPos("Binarized line threshold", "Processed image")
-        self.detector = cv2.StarDetector(maxSize, responseThreshold, lineThresholdProjected, lineThresholdBinarized) 
+        responseThreshold = cv2.getTrackbarPos("Response threshold",
+                                                processed_win)
+        lineThresholdProjected = cv2.getTrackbarPos("Projected line threshold",
+                                                    processed_win)
+        lineThresholdBinarized = cv2.getTrackbarPos("Binarized line threshold",
+                                                    processed_win)
+        self.detector = cv2.StarDetector(maxSize, responseThreshold,
+                                lineThresholdProjected, lineThresholdBinarized) 
 
     def simpleFilter(self):
         #Very simple filter
         if self.prev_img is None:
             self.prev_img = self.cur_img
-        return (self.gamma * self.cur_img + (1-self.gamma)*self.prev_img).astype(numpy.uint8)
+        return (self.gamma * self.cur_img + (1-self.gamma)*self.prev_img)\
+                .astype(numpy.uint8)
 
     def getEncirclingContour(self, contours):
         for contour in contours:
             if cv2.pointPolygonTest(contour, self.point, False) > 0:
-                #print "Found contour encircling desired point"
                 return contour
 
     def getLargestContour(self, contours):
@@ -136,93 +155,90 @@ class ObjectFinder(CameraSubscriber):
 
         self.processed = self.detectFunction(self.img)
         
-        #Find the contour associated with self.point
+        # Find the contour associated with self.point
         contour_img = self.processed.copy()
-        contours, hierarchy = cv2.findContours(contour_img, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+        contours, hierarchy = cv2.findContours(contour_img, cv2.RETR_LIST,
+                                               cv2.CHAIN_APPROX_SIMPLE)
         if contours is None or len(contours) == 0:
-            #cv2.waitKey(self.cv_wait)
             self.centroid = None
             return
             
         cv2.drawContours(contour_img, contours, -1, (255, 255, 255))
         contour = self.getLargestContour(contours)
         if contour == None:
-            #cv2.waitKey(self.cv_wait)
             self.centroid = None
             return
 
-        #Find the centroid of this contour
+        # Find the centroid of this contour
         moments = cv2.moments(contour)
-        self.centroid = ( int(moments['m10']/moments['m00'] ), int(moments['m01']/moments['m00']), 0 )
+        self.centroid = ( int(moments['m10']/moments['m00'] ),
+                          int(moments['m01']/moments['m00']), 0 )
  
         canny = self.edgeDetect(self.img)
         self.axis = self.getObjectAxes(canny, contour)
+
+        # Draw the detected object
         if self.axis is not None:
-            self.axis = numpy.hstack( (self.axis[0:2], 0, self.axis[2:4], 0) )
-            cv2.line(self.cur_img, tuple(self.axis[0:2]), tuple(self.axis[3:5]), (0, 255, 0), 2)
+            cv2.line(self.cur_img, tuple(self.axis[0:2]),
+                                   tuple(self.axis[3:5]), (0, 255, 0), 2)
 
-        cv2.circle(img=contour_img, center=self.centroid[0:2], radius=3, color=(255, 255, 255), thickness=-1)
+        cv2.circle(img=contour_img, center=self.centroid[0:2], radius=3,
+                   color=(255, 255, 255), thickness=-1)
         
-        #cv2.imshow("Hand camera", self.cur_img)
-
-        #cv2.imshow("Processed image", self.processed)
-        #cv2.imshow("Contours", contour_img)
-        #cv2.waitKey(self.cv_wait)
         self.prev_img = self.img
         self.point = self.centroid 
 
     def getObjectAxes(self, img, contour):
-
+        # Get the bounding rectangle around the detected object
         rect = cv2.boundingRect(contour)
+        
+        # Calculate a border around the bounding rectangle
         pad = int((rect[2]+rect[3])/8)
 
-        if rect[0] < pad:
-            x = 0
-        else:
-            x = rect[0]-pad
+        if rect[0] < pad:  x = 0
+        else: x = rect[0]-pad
 
-        if rect[1] < pad:
-            y = 0
-        else:
-            y = rect[1]-pad
+        if rect[1] < pad:  y = 0
+        else:  y = rect[1]-pad
 
         p1 = (x, y)
 
         x, y = rect[0]+rect[2]+pad, rect[1]+rect[3]+pad
         
-        if x > img.shape[1]:
-            x = img.shape[1] - 1
-        if y > img.shape[0]:
-            y = img.shape[0] - 1
+        if x > img.shape[1]:  x = img.shape[1] - 1
+        if y > img.shape[0]:  y = img.shape[0] - 1
 
         p2 = (x, y)
-        print p1, p2       
-        cv2.rectangle(self.cur_img, p2, p1, (0, 255, 0), 3)
 
+        cv2.rectangle(self.cur_img, p2, p1, (0, 255, 0), 3)
+        
+        # Extract the region of interest around the detected object
         subimg = img[p1[1]:p2[1], p1[0]:p2[0]]
        
-        #These were carefully tuned Hough parameters which maybe should be rosparam'ed 
-        rho, theta, threshold, minLineLength, maxLineGap= 1, pi/180, 30, 2, 5
-        
-        lines = cv2.HoughLinesP(subimg, rho, theta, threshold, minLineLength, maxLineGap)
+        rho, theta, threshold, minLineLength, maxLineGap = getHoughArgs(self.limb)
+        # Hough line detection
+        lines = cv2.HoughLinesP(subimg, rho, theta, threshold, minLineLength,
+                                maxLineGap)
         if lines is None:
             print "no lines found"
             return None
+
         print "lines found: ", lines.shape
         lines = lines.reshape(lines.shape[1], lines.shape[2])
-        #for line in lines:
-        #    cv2.line(self.cur_img, tuple(line[0:2]), tuple(line[2:4]), (0, 255, 0), 2)
 
-        lengths = numpy.square(lines[:, 0]-lines[:, 2]) + numpy.square(lines[:, 1]-lines[:, 3])
+        # Calculate the lengths of each line
+        lengths = numpy.square(lines[:, 0]-lines[:, 2]) +\
+                  numpy.square(lines[:, 1]-lines[:, 3])
         lines = numpy.hstack((lines, lengths.reshape((lengths.shape[0], 1)) ))
         lines = lines[lines[:,4].argsort()]
         lines = lines[::-1] #Reverse the sorted array
         lines = lines[:, 0:4]
 
-        #bestline = lines[lines.shape[0]/2]
         bestline = lines[0] #Get the longest line
         bestline += numpy.tile(numpy.array(p1), 2)
-        return bestline
+
+        axis = numpy.hstack( (bestline[0:2], 0, bestline[2:4], 0) )
+        return axis
         
     def starDetect(self, img):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -245,7 +261,10 @@ class ObjectFinder(CameraSubscriber):
             max_iter = 10
             epsilon = 1.0
             attempts = 10
-            compactness, labels, centers = cv2.kmeans(samples, k, (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, max_iter, epsilon), attempts, cv2.KMEANS_RANDOM_CENTERS)
+            compactness, labels, centers = cv2.kmeans(samples, k,
+                                 (cv2.TERM_CRITERIA_EPS +
+                                 cv2.TERM_CRITERIA_MAX_ITER, max_iter, epsilon),
+                                 attempts, cv2.KMEANS_RANDOM_CENTERS)
             if prev_compactness - compactness < delta:
                 if k > 1:
                     k-=1
@@ -262,34 +281,32 @@ class ObjectFinder(CameraSubscriber):
         # Draw polygon around clusters
         # load these values from file because calculating this is godawful
         phi = (1.0+sqrt(5))/2.0
-        hues = [ numpy.array([floor( (i*phi - floor(i*phi)) * 179), 255, 255]) for i in range(0, 100, 10)]
+        hues = [ numpy.array([floor( (i*phi - floor(i*phi)) * 179), 255, 255])
+                 for i in range(0, 100, 10)]
         
-        colors = [tuple(cv2.cvtColor(hue.reshape((1, 1, 3)).astype(numpy.uint8), cv2.COLOR_HSV2BGR).flatten().tolist()) for hue in hues]
+        colors = [tuple(cv2.cvtColor(hue.reshape((1, 1, 3)).astype(numpy.uint8),
+                  cv2.COLOR_HSV2BGR).flatten().tolist()) for hue in hues]
         for i in polys.keys():
             points = numpy.array(polys[i]).astype(int)
-
-            """for point in points:
-                # Draw clustered points in the same color
-                cv2.circle(img=img, center=tuple(point.flatten().tolist()), radius=2, color=colors[i % len(colors)], thickness=-1)"""
 
             #Draw the convex hull of the points in the processed image
             hull = cv2.convexHull(points)
             hull = hull.reshape((hull.shape[0], 1, 2))
             cv2.fillConvexPoly(gray, hull, color=255)
-        #cv2.imshow("Hand camera", img)
         return gray
 
     def watershedDetect(self, img):
         # Do some preprocessing
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        blur_radius = cv2.getTrackbarPos("blur", "Processed image")
+        blur_radius = cv2.getTrackbarPos("blur", processed_win)
         blur_radius = blur_radius*2-1
         if blur_radius > 0:
             gray = cv2.GaussianBlur(gray, (blur_radius, blur_radius), 0)
         # Blur/diffusion filter (?)
         # Get initial markers
 
-        ret, markers = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        ret, markers = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV +
+                                                   cv2.THRESH_OTSU)
         kernel_size = 5
         kernel = numpy.ones((kernel_size,kernel_size),numpy.uint8)
 
@@ -323,16 +340,16 @@ class ObjectFinder(CameraSubscriber):
 
     def edgeDetect(self, img):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        thresh1 = cv2.getTrackbarPos('threshold 1', "Processed image")
-        thresh2 = cv2.getTrackbarPos('threshold 2', "Processed image")
+        thresh1 = cv2.getTrackbarPos('threshold 1', processed_win)
+        thresh2 = cv2.getTrackbarPos('threshold 2', processed_win)
         canny = cv2.Canny(gray, thresh1, thresh2)
         return canny
 
     def colorDetect(self, img):
         #Blur the image to get rid of those annoying speckles
-        blur_radius = cv2.getTrackbarPos("blur", "Processed image")
-        radius = cv2.getTrackbarPos("radius", "Processed image")
-        open_radius = cv2.getTrackbarPos("open", "Processed image")
+        blur_radius = cv2.getTrackbarPos("blur", processed_win)
+        radius = cv2.getTrackbarPos("radius", processed_win)
+        open_radius = cv2.getTrackbarPos("open", processed_win)
 
         blur_radius = blur_radius*2-1
 
@@ -345,7 +362,8 @@ class ObjectFinder(CameraSubscriber):
         if self.color == None:
             self.color = blur_img[self.point[1], self.point[0]]
 
-        return common.colorSegmentation(blur_img, blur_radius, radius, open_radius, self.color)
+        return common.colorSegmentation(blur_img, blur_radius, radius,
+                                        open_radius, self.color)
 
 
 def cleanup():
@@ -374,7 +392,7 @@ def main():
         args.method = 'color'
 
     print("Initializing node... ")
-    rospy.init_node("baxter_object_tracker_%s" % (limb,))
+    rospy.init_node(node_name+"_"+limb)
 
     rospy.on_shutdown(cleanup)
 
@@ -383,29 +401,27 @@ def main():
     print("Enabling robot... ")
     rs.enable()
     
-    cv2.namedWindow("Hand camera")
+    cv2.namedWindow(raw_win)
     cam = CameraSubscriber()
     cam.subscribe(limb)
 
-    print("Click on the object you would like to track, then press any key to continue.")
+    print "Click on the object you would like to track, then press any key to\
+          continue."
     ml = common.MouseListener()
 
-    cv2.setMouseCallback("Hand camera", ml.onMouse)
+    cv2.setMouseCallback(raw_win, ml.onMouse)
     while not ml.done:
         if cam.cur_img is not None:
-            cv2.imshow("Hand camera", cam.cur_img)
+            cv2.imshow(raw_win, cam.cur_img)
 
         cv2.waitKey(cam.cv_wait)
-
-    #cv2.setMouseCallback("Hand camera", nothing)
 
     detectMethod = None
 
     cam.unsubscribe()
 
-    cv2.namedWindow("Processed image")
-    cv2.imshow("Processed image", numpy.zeros((cam.cur_img.shape)))
-    #cv2.namedWindow("Contours")
+    cv2.namedWindow(processed_win)
+    cv2.imshow(processed_win, numpy.zeros((cam.cur_img.shape)))
 
     print "Starting image processor"
     imgproc = ObjectFinder(args.method, (ml.x_clicked, ml.y_clicked))
@@ -422,17 +438,17 @@ def main():
         msg.centroid = centroid
         if imgproc.axis is None:
             imgproc.axis = -1*numpy.ones(6)
-        msg.axis = Polygon([Point(*imgproc.axis[0:3].tolist()), Point(*imgproc.axis[3:6].tolist())])
+        msg.axis = Polygon([Point(*imgproc.axis[0:3].tolist()),
+                            Point(*imgproc.axis[3:6].tolist())])
 
         imgproc.handler_pub.publish(msg)
         if imgproc.cur_img is not None:
-            cv2.imshow("Hand camera", imgproc.cur_img)
+            cv2.imshow(raw_win, imgproc.cur_img)
 
         if imgproc.processed is not None:
-            cv2.imshow("Processed image", imgproc.processed)
+            cv2.imshow(processed_win, imgproc.processed)
 
         cv2.waitKey(imgproc.cv_wait)
-        #imgproc.pub_rate.sleep()
 
 if __name__ == "__main__":
     main()
