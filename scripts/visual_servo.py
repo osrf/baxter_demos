@@ -36,7 +36,6 @@ from sensor_msgs.msg import (
 
 from geometry_msgs.msg import(Point)
 
-#TODO: Parametrize
 class VisualCommand():
     def __init__(self, iksvc, limb):
         self.centroid = None
@@ -46,9 +45,10 @@ class VisualCommand():
         self.iksvc = iksvc
         self.limb = limb
         self.limb_iface = baxter_interface.Limb(limb)
+        self.gripper_if = baxter_interface.Gripper(limb)
         self.tf_listener = tf.TransformListener()
         self.stateidx = 0
-        self.states = self.wait_centroid, self.orient, self.servo_xy, self.servo_z, self.done_state
+        self.states = self.wait_centroid, self.orient, self.servo_xy, self.servo_z, self.grip_state, self.done_state
         self.done = 0
         #robot_urdf = URDF.load_from_parameter_server()
 
@@ -66,7 +66,7 @@ class VisualCommand():
         paramnames = ["servo_speed", "min_pose_z", "min_ir_depth"]
         paramvals = []
         for param in paramnames:
-            topic = "/visual_servo/"
+            topic = "/servo_to_object/"
             paramvals.append(rospy.get_param(topic+param))
         self.inc, self.min_pose_z, self.min_ir_depth = tuple(paramvals)
         self.goal_pos = (rospy.get_param(topic+"camera_x")*float(rospy.get_param(topic+"goal_ratio_x")), rospy.get_param(topic+"camera_y")*float(rospy.get_param(topic+"goal_ratio_y")))
@@ -126,7 +126,8 @@ class VisualCommand():
     def disoriented(self):
         #self.axis is neither parallel nor perpendicular to the camera x-axis
         x_axis = numpy.array([1, 0])
-        axis = numpy.array( [self.axis[2]-self.axis[0], self.axis[3] - self.axis[1]] )
+        #axis = numpy.array( [self.axis[2]-self.axis[0], self.axis[3] - self.axis[1]] )
+        axis = self.axis[2:4] - self.axis[0:2]
         ctheta = numpy.dot(x_axis, axis/numpy.linalg.norm(axis))
         print "cos(theta) =", ctheta
         thresh = 0.1
@@ -139,6 +140,7 @@ class VisualCommand():
         print "translating in XY at speed:", self.inc
         d = self.centroid - self.goal_pos
 
+        self.tf_listener.waitForTransform('/'+self.limb+'_hand_camera', '/base', rospy.Time(), rospy.Duration(4.0))
         (trans, rot) = self.tf_listener.lookupTransform('/'+self.limb+'_hand_camera', '/base', rospy.Time(0))
         R = tf.transformations.quaternion_matrix(rot)[:3, :3]
         d = numpy.concatenate( (d, numpy.zeros(1)) )
@@ -162,6 +164,14 @@ class VisualCommand():
         direction = numpy.array([0, 0, -self.inc])
         self.command_ik(direction)
 
+    def grip_state(self):
+        self.gripper_if.close()
+        if not self.gripper_if.gripping():
+            print "oh no! I'm not gripping anything"
+            self.gripper_if.open()
+        else:
+            self.done = 1 
+
     def done_state(self):
         self.done = 1
         print "Done"
@@ -175,6 +185,9 @@ class VisualCommand():
         if self.done:
             self.done_state()
             return
+
+        #So this is not a proper state machine right now. In fact it's pretty messy.
+        
         #Maybe experiment with making this proportional to Z-coordinate or contour size
         threshold = 10
         if self.disoriented() and self.ir_reading > 0.15:
@@ -184,6 +197,8 @@ class VisualCommand():
             self.stateidx = 2
         elif self.outOfRange(): 
             self.stateidx = 3
+        elif self.gripper_if.gripping():
+            self.stateidx = 5
         else:
             self.stateidx = 4
         
@@ -193,7 +208,7 @@ class VisualCommand():
         
         self.centroid = numpy.array((data.centroid.x, data.centroid.y))
         print "centroid:", self.centroid
-        #self.x_extremes = (data.xmin, data.xmax)
+
         if self.centroid[0] == -1 or self.centroid[1] == -1:
             print "Waiting on centroid from object_finder"
             self.stateidx = 0

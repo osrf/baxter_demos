@@ -1,12 +1,14 @@
-
 <launch>
 
   <arg name="limb"     default="right"/>
   <arg name="method"   default="color"/>
-  <arg name="folder"   default="$(find baxter_demos)/assets/"/>
 
   <param name="robot_description" textfile="$(find baxter_description)/urdf/baxter.urdf"/>
 
+  <!-- Start the Joint Trajectory Action Server -->
+  <node name="rsdk_joint_trajectory_action_server" pkg="baxter_interface"
+  type="joint_trajectory_action_server.py" args="-l $(arg limb)"
+  required="true"/>
 
   <node pkg="baxter_demos" name="object_finder" type="object_finder.py"
   args="--limb $(arg limb) --method $(arg method)" required="true"/>
@@ -19,8 +21,8 @@
 
   <!--Parameters for the baxter_demos/object_tracker application based on Baxter's workspace-->
 
-  <node pkg="baxter_demos" name="servo_to_object" type="servo_to_object.py"
-args="--limb $(arg limb) --folder $(arg folder)" required="true">
+  <node pkg="baxter_demos" name="visual_servo" type="visual_servo.py"
+args="--limb $(arg limb)" required="true">
   <!--speed determines how fast Baxter's arm moves in visual_servo-->
   <param name="servo_speed" value="0.0095"/>
 
@@ -43,6 +45,9 @@ args="--limb $(arg limb) --folder $(arg folder)" required="true">
     <param name="gripper_max" value="0.75" />
 </node>
 
-
+  
+  <node pkg="baxter_demos" name="gripper" type="gripper.py"
+  args="--limb $(arg limb)" required="true"/>
+ 
 
 </launch>

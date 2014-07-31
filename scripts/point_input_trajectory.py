@@ -85,21 +85,16 @@ def main():
 
     limbInterface = baxter_interface.Limb(limb)
 
-    def getButtonPress(buttonpress):
-        while not buttonpress.pressed:
-            rospy.sleep(0.5)
-
-        #Get points from user
-        jointdict = limbInterface.joint_angles()
-        print jointdict
-        return [jointdict[limb+"_"+name] for name in traj.jointnames]
-    
     common.send_image(filenames[0])
     #Get the current position
     buttonpress = common.ButtonListener()
     buttonpress.subscribe("/robot/digital_io/"+limb+"_lower_button/state")
     points = []
-    points.append( getButtonPress(buttonpress))
+
+    while not buttonpress.pressed:
+        rospy.sleep(0.5)
+    
+    points.append( buttonpress.getButtonPress(limb, limbInterface, traj))
     print "Got first position:"
     print points[0]
 

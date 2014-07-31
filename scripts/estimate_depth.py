@@ -6,6 +6,7 @@ import baxter_interface
 import cv, cv2, cv_bridge
 import numpy
 import tf
+from math import atan2, pi
 
 import common
 import ik_command
@@ -16,11 +17,11 @@ from baxter_demos.msg import BlobInfo
 
 from sensor_msgs.msg import Image, CameraInfo, Range
 
-from geometry_msgs.msg import Pose, Point
+from geometry_msgs.msg import Pose, Point, Quaternion
 
-#going to write something similar for point cloud data (publishes to same topic. might be bad practice?)
 
-#TODO: use axis info from .object_tracker/centroid to command a pose
+def unmap(points):
+    return [points.x, points.y]
 
 class DepthEstimator:
     def __init__(self, limb):
@@ -31,11 +32,15 @@ class DepthEstimator:
         self.ir_reading = None
         self.camera_model = None
         self.goal_pose = None
+        self.done = False
 
         self.min_ir_depth = rospy.get_param("/visual_servo/min_ir_depth")
+        self.object_height = rospy.get_param("/estimate_depth/object_height")
+        self.inc = rospy.get_param("/visual_servo/servo_speed")
+        self.camera_x = rospy.get_param("/visual_servo/camera_x")
+        self.camera_y = rospy.get_param("/visual_servo/camera_y")
         
     def publish(self, rate=100):
-        #TODO: Estimate orientation as well as position
         self.handler_pub = rospy.Publisher("object_tracker/"+self.limb+"/goal_pose", Pose)
         self.pub_rate = rospy.Rate(rate)
 
@@ -50,36 +55,72 @@ class DepthEstimator:
 
     def centroid_callback(self, data):
         self.centroid = (data.centroid.x, data.centroid.y)
+
         if self.centroid is not (-1, -1) and self.camera_model is not None:
+            #make this more readable
+            self.axis = numpy.concatenate( (numpy.array( unmap(data.axis.points[0]) ), numpy.array( unmap(data.axis.points[1])) ) )
+
             pos = self.solve_goal_pose()
             if pos is None:
                 return
-            # Keep the same orientation
-            quat = self.limb_iface.endpoint_pose()['orientation']
-            self.goal_pose = Pose(position=Point(*pos), orientation=quat)
-            print self.goal_pose
+            #quat = self.limb_iface.endpoint_pose()['orientation']
+            #Calculate desired orientation
+            theta = self.calculate_angle()
+            quat = tf.transformations.quaternion_from_euler(-pi, 0, theta)
+
+            self.goal_pose = Pose(position=Point(*pos), orientation=Quaternion(*quat))
             # unregister once published. this is risky design, what if the position changes while waiting to publish?
-            self.centroid_sub.unregister()
+            if self.goal_pose is not None:
+                #self.centroid_sub.unregister()
+                self.done = True
+            else:
+                #We want to decrease Z to get a valid IR reading
+                goal_pose = self.limb_iface.endpoint_pose()
+                goal_pose["position"].z -= self.inc
+                self.goal_pose = goal_pose
             
+    def calculate_angle(self):
+        axis = self.axis[2:4] - self.axis[0:2]
+        theta1 = atan2(axis[1], axis[0])
+
+        ortho = numpy.array((axis[1], -axis[0]))
+        theta2 = atan2(ortho[1], ortho[0])
+
+        if abs(theta2) < abs(theta1):
+            return -theta2
+        else:
+            return -theta1
 
     def solve_goal_pose(self):
+        if self.ir_reading is None:
+            return None
         # Project centroid into 3D coordinates
-        vec = numpy.array( self.camera_model.projectPixelTo3dRay(self.centroid) )
+        # TODO: rosparametrize
+        center = (self.centroid[0] - 320, self.centroid[1] - 200) 
+        vec = numpy.array( self.camera_model.projectPixelTo3dRay(center) )
         # Scale it by the IR reading
-        d_cam = ( self.ir_reading - self.min_ir_depth ) * vec
+        d_cam = ( self.ir_reading - self.min_ir_depth - self.object_height ) * vec
         d_cam = numpy.concatenate((d_cam, numpy.ones(1)))
+        print "Camera vector:", d_cam
+
         # Now transform into the world frame
         try:
-            (trans, rot) = self.tf_listener.lookupTransform('/'+self.limb+'_hand_camera', '/base', rospy.Time(0))
+            self.tf_listener.waitForTransform('/base', '/'+self.limb+'_hand_camera', rospy.Time(), rospy.Duration(4))
+            (trans, rot) = self.tf_listener.lookupTransform('/base', '/'+self.limb+'_hand_camera', rospy.Time(0))
+
         except tf.ExtrapolationException:
             return None
         
         camera_to_base = tf.transformations.compose_matrix(translate=trans, angles=tf.transformations.euler_from_quaternion(rot))
+
         d_base = numpy.dot(camera_to_base, d_cam)
         return d_base[0:3]
 
     def ir_callback(self, data):
         self.ir_reading = data.range
+        if self.ir_reading > 60:
+            print "Invalid IR reading"
+            self.ir_reading = 0.4
 
     def info_callback(self, data):
         # Get a camera model object using image_geometry and the camera_info topic
@@ -103,17 +144,16 @@ def main():
 
     rospy.init_node("estimate_depth")
     
+
     de = DepthEstimator(limb)
     de.subscribe()
     de.publish()
     print "subscribed"
-
+    rate = rospy.Rate(100)
     while not rospy.is_shutdown():
         if de.goal_pose is not None:
-            # Publish goal_pose once
             de.handler_pub.publish(de.goal_pose)
-            return
-        de.pub_rate.sleep()
+        rate.sleep()
 
 if __name__ == "__main__":
     main()
