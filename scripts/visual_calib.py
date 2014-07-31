@@ -99,7 +99,6 @@ class VisualCalibrator():
     def depth_assign(self, data):
         self.disparity_img = cv_bridge.CvBridge().imgmsg_to_cv2( data.image )
 
-
     def camera_model_init(self):
         print "Initializing camera model"
         path = rospy.get_param("/visual_calib/yaml_path")
@@ -166,14 +165,7 @@ class VisualCalibrator():
         if len(contours) == 0:
             return None
         contourpts = contours[0]
-        """if len(contours) > 1:
-            contourpts = numpy.concatenate((contours[0], contours[1]))
-        elif len(contours) > 0:
-            contourpts = contours[0]
-        else:
-            print "Couldn't find marker contours"
-            return None, None"""
-        
+      
         rot = cv2.minAreaRect(contourpts)
         p1 = numpy.array(rot[0])
         s1, s2 = rot[1]
@@ -215,6 +207,7 @@ class VisualCalibrator():
         #Miiight need to translate pixels so that 0, 0 is the center of the frame
         for point in points:
             disparity = self.disparity_img[point[1], point[0]] 
+            print "got disparity:", disparity
             #point = (point[0]-320, point[1]-200)
             # Convert scale to robot units. OpenNI topics provide camera_info
             p_marker = numpy.array(self.camera_model.projectPixelTo3d(point, disparity))
@@ -230,8 +223,8 @@ class VisualCalibrator():
         trans, rot = self.tf.lookupTransform('/base', '/'+self.limb+'_gripper', rospy.Time(0) )
 
         gripper_to_base = tf.transformations.compose_matrix(translate=trans, angles=tf.transformations.euler_from_quaternion(rot))
-        R_gripper_base = gripper_to_base[0:3, 0:3]
-        t_gripper_base = gripper_to_base[3, 0:3]
+        #R_gripper_base = gripper_to_base[0:3, 0:3]
+        #t_gripper_base = gripper_to_base[0:3, 3]
 
         marker_base = []
         for marker_gripper in marker_gripper_points:
@@ -262,9 +255,23 @@ class VisualCalibrator():
         Q = numpy.hstack( tuple(marker_base)).transpose()
         retval, out, outliers = cv2.estimateAffine3D(P, Q)
         print "Affine transformation:", out
+        A = out[0:3, 0:3]
+        T = out[:, 3]
+        R = A/numpy.linalg.norm(A[0, :])
+        print "'Rotation:'", R
+        print "Translation:", T
+
+        #S = tf.transformations.scale_from_matrix(A)
+        #print "Scale factor:", S
+        S = numpy.zeros((2, 3))
+        for i in range(3):
+            S[0, i] = numpy.linalg.norm(A[i, :])
+            S[1, i] = numpy.linalg.norm(A[:, i])
+        print "Scale factors:", S
+            
 
         #Turn rotation matrix into quaternion
-        """try:
+        try:
             quat = tf.transformations.quaternion_from_euler(tf.transformations.rotation_from_matrix(R))
         except:
             print "Rotation matrix had eigenvalues:", numpy.linalg.eig(R)[1]
@@ -274,7 +281,7 @@ class VisualCalibrator():
         camera_pose = Pose( position = position, orientation = quat )
         #Publish as a marker to display in rviz
         self.msg = Marker(type=visualization_msgs.msg.Marker.ARROW, pose = camera_pose, scale = (1, 1, 1))
-       """ 
+        
 
 def main():
     #TODO: Move arms to preset position where markers are visible
