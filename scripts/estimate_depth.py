@@ -41,7 +41,6 @@ class DepthEstimator:
         self.camera_y = rospy.get_param("/visual_servo/camera_y")
         
     def publish(self, rate=100):
-        #TODO: Estimate orientation as well as position
         self.handler_pub = rospy.Publisher("object_tracker/"+self.limb+"/goal_pose", Pose)
         self.pub_rate = rospy.Rate(rate)
 
@@ -96,7 +95,7 @@ class DepthEstimator:
         if self.ir_reading is None:
             return None
         # Project centroid into 3D coordinates
-        # TODO: less hardcoding
+        # TODO: rosparametrize
         center = (self.centroid[0] - 320, self.centroid[1] - 200) 
         vec = numpy.array( self.camera_model.projectPixelTo3dRay(center) )
         # Scale it by the IR reading

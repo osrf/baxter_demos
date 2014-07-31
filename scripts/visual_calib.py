@@ -17,7 +17,9 @@ import baxter_interface
 
 import cv, cv2, cv_bridge
 import numpy
+import scipy
 import tf
+import image_geometry
 import camera_calibration_parser
 
 from math import cos, sin
@@ -31,16 +33,22 @@ from sensor_msgs.msg import (
     PointCloud2
 )
 
+from geometry_msgs.msg import Pose
 from stereo_msgs.msg import DisparityImage
+from visualization_msgs.msg import Marker
+import visualization_msgs.msg
 
-import image_geometry
 
 
 #TODO: rosparam
 marker_side = .035
-marker_bottom = [-.015, 0, -(marker_side+.07) ]
-marker_top = [-.015, 0, -.07 ]
-marker_translate = [-.015, 0, -(marker_side/2+.07) ] #Assuming marker NOT on side with the camera
+marker_height = 0.06735
+marker_x = -0.03829
+marker_gripper_points = [ [marker_x, -marker_side/2, marker_side+marker_height], [marker_x, marker_side/2, marker_side+marker_height], [marker_x, marker_side/2, marker_height], [marker_x, -marker_side/2, marker_height] ]
+#marker_gripper_points = [ [marker_x, 0, marker_side + marker_height], [marker_x, 0, marker_height] ]
+
+#translation from the center of the marker to the gripper
+marker_translate = [-marker_x, 0, -marker_side/2-marker_height]
 
 def nothing(data):
     pass
@@ -78,8 +86,12 @@ class VisualCalibrator():
         self.color = None
 
         self.point_sub = rospy.Subscriber("/camera/depth_registered/disparity", DisparityImage, self.depth_assign)
-        self.img_sub = rospy.Subscriber("/camera/rgb/image_color", Image, self.color_assign)
+        self.img_sub = rospy.Subscriber("/camera/rgb/image_rect_color", Image, self.color_assign)
         
+    def publish(self, rate=100):
+        self.handler_pub = rospy.Publisher("visual_calib/"+self.limb+"/camera_pose", Pose)
+        self.pub_rate = rospy.Rate(rate)
+        self.msg = None
 
     def setClickpoint(self, x, y):
         self.clickpoint = (x, y)
@@ -127,7 +139,7 @@ class VisualCalibrator():
         #Need to solve the shift axis problem
         point = self.clickpoint
         if point is None:
-            return None, None
+            return None
         blur_radius = cv2.getTrackbarPos("blur", "Processed image")
         radius = cv2.getTrackbarPos("radius", "Processed image")
         open_radius = cv2.getTrackbarPos("open", "Processed image")
@@ -152,7 +164,7 @@ class VisualCalibrator():
         #Sort the contours by area and get the two biggest
         contours.sort(key = lambda x : cv2.contourArea(x), reverse = True)
         if len(contours) == 0:
-            return None, None
+            return None
         contourpts = contours[0]
         """if len(contours) > 1:
             contourpts = numpy.concatenate((contours[0], contours[1]))
@@ -163,71 +175,106 @@ class VisualCalibrator():
             return None, None"""
         
         rot = cv2.minAreaRect(contourpts)
-        x1, y1 = rot[0]
+        p1 = numpy.array(rot[0])
         s1, s2 = rot[1]
-        theta = abs(rot[2])
+        theta = -abs(rot[2])
         #x1, y1, s1, s2, theta = rot
         #where x1, y1 is the top left point, s1, s2 are the sides, and theta is the rotation
         #TODO: check the negative sign
         
-        #Return the vertical axis through the centroid
-        p1 = (x1+s1/2*cos(theta), y1-s1/2*sin(theta))
-        p2 = (x1-s2*sin(theta)+s1/2*sin(theta), y1-s2*cos(theta)+s1/2*cos(theta))
-
-        return p1, p2
+        #Calculate the four points of the rectangle
+        rect = cv2.cv.BoxPoints(rot)
+        return rect
+        
+        #points = [ p1 + numpy.array((-s1/2*cos(theta), -s1/2*sin(theta) )) ]
+        #points.append( p1 + numpy.array((s1/2*cos(theta), s1/2*sin(theta))) )
+        
+        #return points, p1
 
     def findGripper(self, img_2d, pc):
         # Input: 2D image from Kinect and point depth
         # Returns transform from camera frame to robot frame
+        self.processed = numpy.zeros(self.processed.shape)
         
-        p1_2d, p2_2d = self.colorDetect(img_2d)
-        if p1_2d is None or p2_2d is None:
+        points = self.colorDetect(img_2d)
+        if points is None:
             return
-        cv2.line(self.processed, tuple(map(int, p1_2d)), tuple(map(int, p2_2d)), 255, 3)
-        
+
+        cv2.line(self.processed, tuple(map(int, points[0])), tuple(map(int, points[1])), 255, 2)
+        cv2.line(self.processed, tuple(map(int, points[1])), tuple(map(int, points[2])), 255, 3)
+        cv2.line(self.processed, tuple(map(int, points[2])), tuple(map(int, points[3])), 255, 3)
+        cv2.line(self.processed, tuple(map(int, points[3])), tuple(map(int, points[0])), 255, 3)
+       
         #Get some 3D
         if self.disparity_img is None:
             print "Waiting on disparity"
             return
-        p_2d = [p1_2d, p2_2d]
 
         marker_camera = []
-        #Miiight need to translate pixels so that 0, 0 is the center of the frame
-        for i in range(2):
-            disparity = self.disparity_img[p_2d[i][1], p_2d[i][0]] 
-            print "Got disparity:", disparity
 
+        #Miiight need to translate pixels so that 0, 0 is the center of the frame
+        for point in points:
+            disparity = self.disparity_img[point[1], point[0]] 
+            #point = (point[0]-320, point[1]-200)
             # Convert scale to robot units. OpenNI topics provide camera_info
-            p_marker = numpy.array(self.camera_model.projectPixelTo3d(p_2d[i], disparity))
-            p_marker = numpy.concatenate((p_marker, numpy.ones(1))).reshape((4,1))
+            p_marker = numpy.array(self.camera_model.projectPixelTo3d(point, disparity))
+            p_marker = p_marker.reshape((3,1))
             marker_camera.append(p_marker)
-            print "Got marker in camera frame:", p_marker
+
+        print "extracted points:", marker_camera
+        distances = [numpy.linalg.norm(marker_camera[i]-marker_camera[i-1]) for i in range(len(marker_camera))]
+        print "Distances between extracted points:", distances
+ 
         # Transform marker position to base frame
-        self.tf.waitForTransform('/base', '/'+self.limb+'_gripper', rospy.Duration(4.0))
-        trans, rot = self.tf.lookupTransform('/base', '/'+self.limb+'_gripper', rospy.Time(), rospy.Duration(4) )
+        self.tf.waitForTransform('/base', '/'+self.limb+'_gripper', rospy.Time(), rospy.Duration(4.0))
+        trans, rot = self.tf.lookupTransform('/base', '/'+self.limb+'_gripper', rospy.Time(0) )
 
         gripper_to_base = tf.transformations.compose_matrix(translate=trans, angles=tf.transformations.euler_from_quaternion(rot))
-        marker_top_g = numpy.array(marker_top+[1]).reshape(4, 1)       
-        marker_bottom_g = numpy.array(marker_bottom+[1]).reshape(4, 1)
+        R_gripper_base = gripper_to_base[0:3, 0:3]
+        t_gripper_base = gripper_to_base[3, 0:3]
 
-        marker_top_base = numpy.dot(gripper_to_base, marker_top_g)
-        marker_bottom_base = numpy.dot(gripper_to_base, marker_bottom_g)
+        marker_base = []
+        for marker_gripper in marker_gripper_points:
+            marker_gripper = numpy.array(marker_gripper+[1]).reshape(4, 1)       
 
+            marker_base.append( numpy.dot(gripper_to_base, marker_gripper)[0:3] )
+
+        distances = [numpy.linalg.norm(marker_base[i]-marker_base[i-1]) for i in range(len(marker_base))]
+        print "Distances between points in robot frame:", distances
         # Now that we have the pose of the marker in two different frames,
         # we can solve for the transform between these frames (camera and robot base frame)
-        # Solve a formulation of Wahba's problem using SVD
-        B = numpy.zeros( (4, 4) )
-        B += numpy.dot(marker_top_base, marker_camera[0].transpose() )
-        B += numpy.dot(marker_bottom_base, marker_camera[1].transpose() )
-        U, S, V = numpy.linalg.svd(B)
-        M = numpy.identity(4)
-        M[2, 2] = numpy.linalg.det(U)*numpy.linalg.det(V)
-        T = U*M*V
-        
-        #This should work...?
-        print T
-        
-        
+        # Solution from here:
+        # http://math.stackexchange.com/questions/222113/given-3-points-of-a-rigid-body-in-space-how-do-i-find-the-corresponding-orienta 
+        #TODO: check correspondences between point sets
+
+        #this doesn't work because the sides are not quite the same size, also correspondences might not be great
+        """P = numpy.hstack( (marker_camera[1]-marker_camera[0], marker_camera[2]-marker_camera[0], marker_camera[3]-marker_camera[0] ) )
+        Q = numpy.hstack( (marker_base[1]-marker_base[0], marker_base[2]-marker_base[0], marker_base[3]-marker_base[0] ) )
+        try:
+            R = numpy.dot(Q, numpy.linalg.inv(P))
+            T = marker_base[0] - numpy.dot(Q, numpy.dot(numpy.linalg.inv(P), marker_camera[0]) )
+        except numpy.linalg.linalg.LinAlgError:
+            print "Singular matrix"
+            return
+        print "Rotation:", R
+        print "Translation:", T"""
+        P = numpy.hstack( tuple(marker_camera)).transpose()
+        Q = numpy.hstack( tuple(marker_base)).transpose()
+        retval, out, outliers = cv2.estimateAffine3D(P, Q)
+        print "Affine transformation:", out
+
+        #Turn rotation matrix into quaternion
+        """try:
+            quat = tf.transformations.quaternion_from_euler(tf.transformations.rotation_from_matrix(R))
+        except:
+            print "Rotation matrix had eigenvalues:", numpy.linalg.eig(R)[1]
+            
+            return
+        position = numpy.dot(numpy.linalg.inv(R), T)
+        camera_pose = Pose( position = position, orientation = quat )
+        #Publish as a marker to display in rviz
+        self.msg = Marker(type=visualization_msgs.msg.Marker.ARROW, pose = camera_pose, scale = (1, 1, 1))
+       """ 
 
 def main():
     #TODO: Move arms to preset position where markers are visible
@@ -268,13 +315,16 @@ def main():
 
         cv2.waitKey(100)
     calib.setClickpoint(ml.x_clicked, ml.y_clicked)
-
+    calib.publish()
 
     while not rospy.is_shutdown():
         calib.main_callback()
         cv2.imshow("Processed image", calib.processed)
         cv2.imshow("Camera", calib.img_2d)
         cv2.waitKey(100)
+        if calib.msg is not None:
+            calib.handler_pub.publish(calib.msg)
+            rospy.sleep(calib.pub_rate)
 
 if __name__ == "__main__":
     main()
