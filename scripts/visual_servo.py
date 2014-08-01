@@ -81,10 +81,6 @@ class VisualCommand():
         self.centroid_sub = rospy.Subscriber(topic, BlobInfo, self.centroid_callback)
         topic = "/robot/range/"+self.limb+"_hand_range/state"
         self.ir_sub = rospy.Subscriber(topic, Range, self.ir_callback)
-        topic = "/cameras/"+self.limb+"_hand_camera/camera_info"
-        #may bring this back if we do serious unit conversions
-        #self.info_sub = rospy.Subscriber(topic, CameraInfo, self.info_callback)
-
 
     def command_ik(self, direction):
         """Use the Rethink IK service to figure out a desired joint position"""
@@ -168,7 +164,6 @@ class VisualCommand():
         self.gripper_if.close()
         if not self.gripper_if.gripping():
             print "oh no! I'm not gripping anything"
-            self.gripper_if.open()
         else:
             self.done = 1 
 
@@ -180,7 +175,6 @@ class VisualCommand():
         return (self.limb_iface.endpoint_pose()['position'][2] >= self.min_pose_z) and (self.ir_reading >= self.min_ir_depth)
 
     def visual_servo(self):
-        
         d = self.centroid - self.goal_pos
         if self.done:
             self.done_state()

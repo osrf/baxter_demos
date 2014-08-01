@@ -29,20 +29,20 @@ raw_win = "Hand camera"
 processed_win = "Processed image" 
 node_name = "object_finder"
 
-def getHoughArgs(limb):
+def getHoughArgs():
     names = ["rho", "theta", "threshold", "minLineLength", "maxLineGap"]
-    node_full_name = node_name+"/"+limb+"/"
+    node_full_name = node_name+"/"
     return [rospy.get_param(node_full_name+name) for name in names]
 
 class CameraSubscriber:
     """Subscribe to the hand camera image and convert the message to an OpenCV-
     friendly format"""
-       
-    def subscribe(self, limb, cv_wait = 100):
-        self.limb = limb
-        self.handler_sub = rospy.Subscriber("/cameras/"+limb+"_hand_camera/image",
-                                            Image, self.callback)
+
+    def __init__(self, cv_wait = 100):
         self.cv_wait = cv_wait
+       
+    def subscribe(self, topic="/cameras/right_hand_camera/image"):
+        self.handler_sub = rospy.Subscriber(topic, Image, self.callback)
         self.cur_img = None
 
     def unsubscribe(self):
@@ -56,7 +56,8 @@ class CameraSubscriber:
         self.cur_img = img
 
 class ObjectFinder(CameraSubscriber):
-    def __init__(self, method, point, gamma = 1):
+    def __init__(self, method, point, gamma = 1, cv_wait = 100):
+        self.cv_wait = cv_wait
         self.gamma = gamma
 
         cv2.createTrackbar("gamma", processed_win, int(gamma*100), 100, self.updateGamma)
@@ -75,6 +76,8 @@ class ObjectFinder(CameraSubscriber):
             cv2.createTrackbar("open", processed_win, 4, 15, nothing)
             self.detectFunction = self.colorDetect
             self.color = None
+
+            self.houghArgs = getHoughArgs()
 
         elif method == 'star':
             # Maximum number of filters to apply?
@@ -129,6 +132,8 @@ class ObjectFinder(CameraSubscriber):
         #Very simple filter
         if self.prev_img is None:
             self.prev_img = self.cur_img
+        if self.prev_img.shape != self.cur_img.shape:
+            return self.cur_img
         return (self.gamma * self.cur_img + (1-self.gamma)*self.prev_img)\
                 .astype(numpy.uint8)
 
@@ -186,7 +191,16 @@ class ObjectFinder(CameraSubscriber):
                    color=(255, 255, 255), thickness=-1)
         
         self.prev_img = self.img
-        self.point = self.centroid 
+        #self.point = self.centroid 
+
+    def updatePoint(self, event, x, y, flags, param):
+        #blur the image and get a new color
+        if event == cv2.EVENT_LBUTTONUP or event == cv2.EVENT_LBUTTONDOWN:
+            blur_radius = cv2.getTrackbarPos("blur", processed_win)
+            point = (x, y)
+            self.point = point
+            blur_img = common.blurImage(self.img, blur_radius)
+            self.color = blur_img[self.point[1], self.point[0]]
 
     def getObjectAxes(self, img, contour):
         # Get the bounding rectangle around the detected object
@@ -215,10 +229,8 @@ class ObjectFinder(CameraSubscriber):
         # Extract the region of interest around the detected object
         subimg = img[p1[1]:p2[1], p1[0]:p2[0]]
        
-        rho, theta, threshold, minLineLength, maxLineGap = getHoughArgs(self.limb)
         # Hough line detection
-        lines = cv2.HoughLinesP(subimg, rho, theta, threshold, minLineLength,
-                                maxLineGap)
+        lines = cv2.HoughLinesP(subimg, *self.houghArgs)
         if lines is None:
             print "no lines found"
             return None
@@ -345,19 +357,13 @@ class ObjectFinder(CameraSubscriber):
         canny = cv2.Canny(gray, thresh1, thresh2)
         return canny
 
+
     def colorDetect(self, img):
         #Blur the image to get rid of those annoying speckles
         blur_radius = cv2.getTrackbarPos("blur", processed_win)
         radius = cv2.getTrackbarPos("radius", processed_win)
         open_radius = cv2.getTrackbarPos("open", processed_win)
-
-        blur_radius = blur_radius*2-1
-
-        blur_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(numpy.uint8)
-        if blur_radius > 0:
-            blur_img = cv2.GaussianBlur(img, (blur_radius, blur_radius), 0)
-        else:
-            blur_img = img
+        blur_img = common.blurImage(img, blur_radius)
 
         if self.color == None:
             self.color = blur_img[self.point[1], self.point[0]]
@@ -365,13 +371,11 @@ class ObjectFinder(CameraSubscriber):
         return common.colorSegmentation(blur_img, blur_radius, radius,
                                         open_radius, self.color)
 
-
 def cleanup():
     cv2.destroyAllWindows()
 
 def nothing(args):
     pass
-
 
 def main():
     arg_fmt = argparse.RawDescriptionHelpFormatter
@@ -379,31 +383,43 @@ def main():
                                      description=main.__doc__)
     required = parser.add_argument_group('required arguments')
     required.add_argument(
-        '-l', '--limb', required=True, choices=['left', 'right'],
-        help='send joint trajectory to which limb'
+        '-l', '--limb', required=False, choices=['left', 'right'],
+        help='which limb to send joint trajectory'
     )
     
-    parser.add_argument('-m', '--method', choices=['color', 'edge', 'star', 'watershed'],
-        required=False, help='which object detection method to use')
+    parser.add_argument('-m', '--method',
+                        choices=['color', 'edge', 'star', 'watershed'],
+                        required=False, help='which detection method to use')
+    parser.add_argument('-t', '--topic', required=False,
+                        help='which image topic to listen on')
 
     args = parser.parse_args(rospy.myargv()[1:])
-    limb = args.limb
+    if args.limb is None:
+        limb = "right"
+    else:
+        limb = args.limb
     if args.method is None:
         args.method = 'color'
+    if args.topic is None:
+        args.topic = "/cameras/"+limb+"_hand_camera/image"
 
+    print args
     print("Initializing node... ")
-    rospy.init_node(node_name+"_"+limb)
+    rospy.init_node(node_name)
 
     rospy.on_shutdown(cleanup)
 
-    print("Getting robot state... ")
-    rs = baxter_interface.RobotEnable(CHECK_VERSION)
-    print("Enabling robot... ")
-    rs.enable()
+    """baxter_cams = ["/cameras/right_hand_camera/image", "/cameras/left_hand_camera/image",
+                    "/cameras/head_camera/image"]
+    if args.topic in baxter_cams:
+        print("Getting robot state... ")
+        rs = baxter_interface.RobotEnable(CHECK_VERSION)
+        print("Enabling robot... ")
+        rs.enable()"""
     
     cv2.namedWindow(raw_win)
     cam = CameraSubscriber()
-    cam.subscribe(limb)
+    cam.subscribe(args.topic)
 
     print "Click on the object you would like to track, then press any key to\
           continue."
@@ -415,7 +431,6 @@ def main():
             cv2.imshow(raw_win, cam.cur_img)
 
         cv2.waitKey(cam.cv_wait)
-
     detectMethod = None
 
     cam.unsubscribe()
@@ -425,8 +440,10 @@ def main():
 
     print "Starting image processor"
     imgproc = ObjectFinder(args.method, (ml.x_clicked, ml.y_clicked))
-    imgproc.subscribe(limb)
+    imgproc.subscribe(args.topic)
     imgproc.publish(limb)
+
+    cv2.setMouseCallback(raw_win, imgproc.updatePoint)
 
     while not rospy.is_shutdown():
         if imgproc.centroid is None:

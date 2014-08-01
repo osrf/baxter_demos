@@ -34,11 +34,12 @@ class DepthEstimator:
         self.goal_pose = None
         self.done = False
 
-        self.min_ir_depth = rospy.get_param("/visual_servo/min_ir_depth")
+        node = "servo_to_object/"
+        self.min_ir_depth = rospy.get_param(node+"min_ir_depth")
         self.object_height = rospy.get_param("/estimate_depth/object_height")
-        self.inc = rospy.get_param("/visual_servo/servo_speed")
-        self.camera_x = rospy.get_param("/visual_servo/camera_x")
-        self.camera_y = rospy.get_param("/visual_servo/camera_y")
+        self.inc = rospy.get_param(node+"servo_speed")
+        self.camera_x = rospy.get_param(node+"camera_x")
+        self.camera_y = rospy.get_param(node+"camera_y")
         
     def publish(self, rate=100):
         self.handler_pub = rospy.Publisher("object_tracker/"+self.limb+"/goal_pose", Pose)
@@ -96,7 +97,7 @@ class DepthEstimator:
             return None
         # Project centroid into 3D coordinates
         # TODO: rosparametrize
-        center = (self.centroid[0] - 320, self.centroid[1] - 200) 
+        center = (self.centroid[0] - self.camera_x/2, self.centroid[1] - self.camera_y/2) 
         vec = numpy.array( self.camera_model.projectPixelTo3dRay(center) )
         # Scale it by the IR reading
         d_cam = ( self.ir_reading - self.min_ir_depth - self.object_height ) * vec

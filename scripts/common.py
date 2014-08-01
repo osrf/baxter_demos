@@ -37,6 +37,17 @@ def send_image(path):
     # Sleep to allow for image to be published.
     rospy.sleep(1)
 
+
+def blurImage(img, blur_radius):
+    blur_radius = blur_radius*2-1
+    blur_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(numpy.uint8)
+
+    if blur_radius > 0:
+        blur_img = cv2.GaussianBlur(img, (blur_radius, blur_radius), 0)
+    else:
+        blur_img = img
+    return blur_img
+
 #now extra portable
 def colorSegmentation(img, blur_radius, radius, open_radius, color):
 
