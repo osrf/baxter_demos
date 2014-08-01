@@ -39,7 +39,7 @@ def callback(data):
     marker_true.type = Marker.CUBE
     marker_true.action = Marker.ADD
     marker_true.pose.position = goal_position
-    marker_true.color.r, marker_true.color.g, marker_true.color.b = (255, 128, 0)
+    marker_true.color.r, marker_true.color.g, marker_true.color.b = (128, 64, 0)
     marker_true.color.a = 1.0
     marker_true.scale.x, marker_true.scale.y, marker_true.scale.z = (0.1, 0.1, 0.1)
     

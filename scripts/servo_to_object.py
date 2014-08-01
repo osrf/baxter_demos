@@ -32,7 +32,6 @@ class DepthCaller:
         self.depth_handler.unregister()
 
 
-
 def main():
     arg_fmt = argparse.RawDescriptionHelpFormatter
     parser = argparse.ArgumentParser(formatter_class=arg_fmt,
@@ -75,8 +74,7 @@ def main():
 
     limbInterface = baxter_interface.Limb(limb)
 
-    #traj = common.Trajectory(limb)
-    #rospy.on_shutdown(traj.stop)
+    #rospy.on_shutdown(display)
 
     common.send_image(filenames[0])
     #Get the current position
@@ -101,6 +99,8 @@ def main():
     points.append( buttonpress.getButtonPress(limbInterface))
     print "Got second position:"
     print points[1]
+
+    common.send_image(filenames[2])
 
     # Command start configuration
 
