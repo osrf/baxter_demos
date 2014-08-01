@@ -14,7 +14,7 @@ User needs to manually run object_finder and subscribe to topic name specified h
 global centroid, axis
 centroid = None
 axis = None
-img_path = "assets/block_imgs/"
+img_path = "/home/jackie/ros_ws/src/baxter_demos/tests/assets/block_imgs/"
 topic_name = "object_finder_test"
 
 img_names = os.listdir(img_path)

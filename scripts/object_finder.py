@@ -27,6 +27,7 @@ from geometry_msgs.msg import(
 
 raw_win = "Hand camera"
 processed_win = "Processed image" 
+edge_win = "Image edges"
 node_name = "object_finder"
 
 def getHoughArgs():
@@ -62,8 +63,8 @@ class ObjectFinder(CameraSubscriber):
 
         cv2.createTrackbar("gamma", processed_win, int(gamma*100), 100, self.updateGamma)
 
-        cv2.createTrackbar("threshold 1", processed_win, 80, 2000, nothing)
-        cv2.createTrackbar("threshold 2", processed_win, 0, 2000, nothing)
+        cv2.createTrackbar("threshold 1", edge_win, 80, 2000, nothing)
+        cv2.createTrackbar("threshold 2", edge_win, 0, 2000, nothing)
 
         if method == 'edge':
             cv2.createTrackbar("threshold 1", processed_win, 500, 2000, nothing)
@@ -106,8 +107,10 @@ class ObjectFinder(CameraSubscriber):
         self.centroid = (-1, -1, -1)
         self.x_extremes = (-1, -1)
         self.axis = numpy.ones((6))*-1
+        self.prev_axis = None
         self.prev_img = None
         self.processed = None
+        self.canny = None
 
     def publish(self, limb, rate = 100):
         topic = "object_tracker/"+limb+"/centroid"
@@ -154,10 +157,9 @@ class ObjectFinder(CameraSubscriber):
 
     def callback(self, data):
         CameraSubscriber.get_data(self, data)
+
         #Process image
-
         self.img = self.simpleFilter()
-
         self.processed = self.detectFunction(self.img)
         
         # Find the contour associated with self.point
@@ -165,12 +167,14 @@ class ObjectFinder(CameraSubscriber):
         contours, hierarchy = cv2.findContours(contour_img, cv2.RETR_LIST,
                                                cv2.CHAIN_APPROX_SIMPLE)
         if contours is None or len(contours) == 0:
+            print "no contours found"
             self.centroid = None
             return
             
         cv2.drawContours(contour_img, contours, -1, (255, 255, 255))
         contour = self.getLargestContour(contours)
         if contour == None:
+            print "No largest contour found"
             self.centroid = None
             return
 
@@ -179,19 +183,25 @@ class ObjectFinder(CameraSubscriber):
         self.centroid = ( int(moments['m10']/moments['m00'] ),
                           int(moments['m01']/moments['m00']), 0 )
  
-        canny = self.edgeDetect(self.img)
-        self.axis = self.getObjectAxes(canny, contour)
+        contour_img = cv2.cvtColor(contour_img, cv2.COLOR_GRAY2BGR)
+        self.canny = self.edgeDetect(contour_img)
+
+        self.axis = self.getObjectAxes(self.canny, contour)
 
         # Draw the detected object
         if self.axis is not None:
             cv2.line(self.cur_img, tuple(self.axis[0:2]),
                                    tuple(self.axis[3:5]), (0, 255, 0), 2)
+            self.prev_axis = self.axis
+        elif self.prev_axis is not None:
+            cv2.line(self.cur_img, tuple(self.prev_axis[0:2]),
+                                   tuple(self.prev_axis[3:5]), (0, 255, 0), 2)
 
-        cv2.circle(img=contour_img, center=self.centroid[0:2], radius=3,
-                   color=(255, 255, 255), thickness=-1)
+
+        cv2.circle(img=self.cur_img, center=self.centroid[0:2], radius=2,
+                   color=(0, 255, 0), thickness=-1)
         
         self.prev_img = self.img
-        #self.point = self.centroid 
 
     def updatePoint(self, event, x, y, flags, param):
         #blur the image and get a new color
@@ -199,8 +209,11 @@ class ObjectFinder(CameraSubscriber):
             blur_radius = cv2.getTrackbarPos("blur", processed_win)
             point = (x, y)
             self.point = point
-            blur_img = common.blurImage(self.img, blur_radius)
+            if self.cur_img is None:
+                return
+            blur_img = common.blurImage(self.cur_img, blur_radius)
             self.color = blur_img[self.point[1], self.point[0]]
+            self.axis = None
 
     def getObjectAxes(self, img, contour):
         # Get the bounding rectangle around the detected object
@@ -235,7 +248,6 @@ class ObjectFinder(CameraSubscriber):
             print "no lines found"
             return None
 
-        print "lines found: ", lines.shape
         lines = lines.reshape(lines.shape[1], lines.shape[2])
 
         # Calculate the lengths of each line
@@ -250,6 +262,7 @@ class ObjectFinder(CameraSubscriber):
         bestline += numpy.tile(numpy.array(p1), 2)
 
         axis = numpy.hstack( (bestline[0:2], 0, bestline[2:4], 0) )
+        print "axis found:", axis
         return axis
         
     def starDetect(self, img):
@@ -352,11 +365,10 @@ class ObjectFinder(CameraSubscriber):
 
     def edgeDetect(self, img):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        thresh1 = cv2.getTrackbarPos('threshold 1', processed_win)
-        thresh2 = cv2.getTrackbarPos('threshold 2', processed_win)
+        thresh1 = cv2.getTrackbarPos('threshold 1', edge_win)
+        thresh2 = cv2.getTrackbarPos('threshold 2', edge_win)
         canny = cv2.Canny(gray, thresh1, thresh2)
         return canny
-
 
     def colorDetect(self, img):
         #Blur the image to get rid of those annoying speckles
@@ -425,24 +437,31 @@ def main():
           continue."
     ml = common.MouseListener()
 
-    cv2.setMouseCallback(raw_win, ml.onMouse)
-    while not ml.done:
-        if cam.cur_img is not None:
-            cv2.imshow(raw_win, cam.cur_img)
+    if "object_finder_test" in args.topic:
+        # Hardcoded position
+        point = (322, 141)
+        
+    else:
+        cv2.setMouseCallback(raw_win, ml.onMouse)
+        while not ml.done:
+            if cam.cur_img is not None:
+                cv2.imshow(raw_win, cam.cur_img)
 
-        cv2.waitKey(cam.cv_wait)
+            cv2.waitKey(cam.cv_wait)
+        point = (ml.x_clicked, ml.y_clicked)
     detectMethod = None
 
     cam.unsubscribe()
 
     cv2.namedWindow(processed_win)
-    cv2.imshow(processed_win, numpy.zeros((cam.cur_img.shape)))
+    if cam.cur_img is not None:
+        cv2.imshow(processed_win, numpy.zeros((cam.cur_img.shape)))
 
     print "Starting image processor"
-    imgproc = ObjectFinder(args.method, (ml.x_clicked, ml.y_clicked))
+    imgproc = ObjectFinder(args.method, point)
     imgproc.subscribe(args.topic)
     imgproc.publish(limb)
-
+    cv2.namedWindow(edge_win)
     cv2.setMouseCallback(raw_win, imgproc.updatePoint)
 
     while not rospy.is_shutdown():
@@ -464,7 +483,8 @@ def main():
 
         if imgproc.processed is not None:
             cv2.imshow(processed_win, imgproc.processed)
-
+        if imgproc.canny is not None:
+            cv2.imshow(edge_win, imgproc.canny)
         cv2.waitKey(imgproc.cv_wait)
 
 if __name__ == "__main__":
