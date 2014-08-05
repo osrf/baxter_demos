@@ -1,0 +1,3 @@
+Object_finder color segmentation and Hough lines test:
+rosrun baxter_demos object_finder.py --topic /object_finder_test
+rosrun baxter_demos color_seg_test.py
