@@ -1,0 +1,21 @@
+<launch>
+  <arg name="limb"     default="right"/>
+  <arg name="method"   default="color"/>
+  <arg name="topic"   default="object_finder_test"/>
+  <arg name="folder"   default="$(find baxter_demos)/tests/assets/block_imgs/"/>
+
+  <node pkg="baxter_demos" name="object_finder" type="object_finder.py"
+  args="--limb $(arg limb) --method $(arg method) --topic $(arg topic)" required="true">
+
+    <!-- Parameters for Hough line detection-->
+    <param name="rho" value="1"/>
+    <param name="theta" value="0.01745329251"/>
+    <param name="threshold" value="30"/>
+    <param name="minLineLength" value="2"/>
+    <param name="maxLineGap" value="5"/>
+  </node>
+
+  <node pkg="baxter_demos" name="color_seg_test" type="color_seg_test.py"
+    args="--folder $(arg folder)" required="true"/>
+
+</launch>

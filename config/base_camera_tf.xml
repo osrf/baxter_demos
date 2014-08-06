@@ -1,0 +1,3 @@
+<!--transformation from /base to /camera_link -->
+<param name="base_camera_trans" value="[0.35707754, -0.02286375, -0.37506243]"/>
+<param name="base_camera_rot" value="[0.02418901, -0.50864865,  0.03063568,  0.86008889]" />
