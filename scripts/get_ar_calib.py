@@ -13,21 +13,10 @@ import visualization_msgs.msg
 
 markernum = '2'
 measured_translation = [0.06991+0.01036+0.0225, -0.0569, -0.0055]
-forearm_marker_rot = numpy.array( [[-1, 0, 0], [0, 0, -1], [0, 1, 0]] )
-
-forearm_marker_trans = numpy.dot(forearm_marker_rot,
-                               -numpy.array(measured_translation).reshape((3, 1))).flatten()
-print forearm_marker_trans
-forearm_marker = numpy.identity(4)
-forearm_marker[:3, :3] = forearm_marker_rot
-forearm_marker[:3, 3] = forearm_marker_trans 
-# Calculate transform from forearm to marker
-"""forearm_marker = tf.transformations.compose_matrix(
-                translate = forearm_marker_trans,
-                angles = tf.transformations.euler_from_matrix(forearm_marker_rot))"""
+forearm_marker_rot = numpy.array( [[-1, 0, 0], [0, 0, -1], [0, -1, 0]] )
 
 def getPoseFromMatrix(matrix):
-    trans, quat = getTfFromMatrix(matrix)
+    trans, quat = getTfFromMatrix(numpy.linalg.inv(matrix))
     return Pose(position=Point(*trans), orientation=Quaternion(*quat))
 
 def getTfFromMatrix(matrix):
@@ -66,27 +55,39 @@ marker_pub = rospy.Publisher("ar_calib_markers", MarkerArray)
 
 rate = rospy.Rate(100)
 
+
+#forearm_marker_trans = numpy.dot(numpy.linalg.inv(forearm_marker_rot),
+#                               -numpy.array(measured_translation).reshape((3, 1))).flatten()
+forearm_marker_trans = numpy.array(measured_translation)
+print forearm_marker_trans
+# Calculate transform from forearm to marker
+forearm_marker = tf.transformations.compose_matrix(
+                translate = forearm_marker_trans,
+                angles = tf.transformations.euler_from_matrix(forearm_marker_rot))
+
 # Publish transform and marker
 while not rospy.is_shutdown():
 
     # base to forearm
     base_forearm = lookupTransform(tf_listener, '/right_lower_forearm', '/base')
 
+    # Compose transforms
+    # base to marker = forearm to marker * base to forearm
+    base_marker = forearm_marker.dot(base_forearm)
+    trans, rot = getTfFromMatrix(base_marker)
+    #tf_broadcaster.sendTransform(trans, rot, rospy.Time.now(), "/ar_marker_2", "/base")
+    tf_broadcaster.sendTransform(trans, rot, rospy.Time.now(), "/base", "/ar_marker_2")
+    marker_pose = getPoseFromMatrix(base_marker)
+
     # marker to camera
     marker_camera = lookupTransform(tf_listener, '/camera_link', '/ar_marker_'+markernum)
 
-    # Compose transforms
-    # base to marker = forearm to marker * base to forearm
-    base_marker = numpy.dot(forearm_marker, base_forearm)
-    trans, rot = getTfFromMatrix(base_marker)
-    #tf_broadcaster.sendTransform(trans, rot, rospy.Time.now(), "/ar_marker_2", "/base")
-    marker_pose = getPoseFromMatrix(base_marker)
-
     # base to camera = marker to camera * base to marker
-    base_camera = numpy.dot(marker_camera, base_marker)
+    base_camera = marker_camera.dot(base_marker)
     trans, rot = getTfFromMatrix(base_camera)
 
-    tf_broadcaster.sendTransform(trans, rot, rospy.Time.now(), "/camera_link", "/base")
+    #tf_broadcaster.sendTransform(trans, rot, rospy.Time.now(), "/camera_link", "/base")
+    tf_broadcaster.sendTransform(trans, rot, rospy.Time.now(), "/base", "/camera_link")
     camera_pose = getPoseFromMatrix(base_camera)
 
     marker_msg = create_marker("marker_pose", 44, Marker.CUBE, marker_pose, (0, 255, 0), (0.07, 0.04, 0.02) )
