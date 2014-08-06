@@ -29,7 +29,7 @@ def lookupTransform(tf_listener, target, source):
     euler = tf.transformations.euler_from_quaternion(rot)
     source_target = tf.transformations.compose_matrix(translate = trans,
                                                      angles = euler)
-    print "looked up transform from", source, "to", target, "-", source_target
+    #print "looked up transform from", source, "to", target, "-", source_target
     return source_target
 
 def create_marker(ns, id_num, shape_type, pose, color, scale):
@@ -74,9 +74,9 @@ while not rospy.is_shutdown():
     # Compose transforms
     # base to marker = forearm to marker * base to forearm
     base_marker = forearm_marker.dot(base_forearm)
-    trans, rot = getTfFromMatrix(base_marker)
-    #tf_broadcaster.sendTransform(trans, rot, rospy.Time.now(), "/ar_marker_2", "/base")
-    tf_broadcaster.sendTransform(trans, rot, rospy.Time.now(), "/base", "/ar_marker_2")
+    trans, rot = getTfFromMatrix(numpy.linalg.inv(base_marker))
+    tf_broadcaster.sendTransform(trans, rot, rospy.Time.now(), "/ar_marker_2", "/base")
+    #tf_broadcaster.sendTransform(trans, rot, rospy.Time.now(), "/base", "/ar_marker_2")
     marker_pose = getPoseFromMatrix(base_marker)
 
     # marker to camera
@@ -84,10 +84,10 @@ while not rospy.is_shutdown():
 
     # base to camera = marker to camera * base to marker
     base_camera = marker_camera.dot(base_marker)
-    trans, rot = getTfFromMatrix(base_camera)
+    trans, rot = getTfFromMatrix(numpy.linalg.inv(base_camera))
 
-    #tf_broadcaster.sendTransform(trans, rot, rospy.Time.now(), "/camera_link", "/base")
-    tf_broadcaster.sendTransform(trans, rot, rospy.Time.now(), "/base", "/camera_link")
+    tf_broadcaster.sendTransform(trans, rot, rospy.Time.now(), "/camera_link", "/base")
+    #tf_broadcaster.sendTransform(trans, rot, rospy.Time.now(), "/base", "/camera_link")
     camera_pose = getPoseFromMatrix(base_camera)
 
     marker_msg = create_marker("marker_pose", 44, Marker.CUBE, marker_pose, (0, 255, 0), (0.07, 0.04, 0.02) )
