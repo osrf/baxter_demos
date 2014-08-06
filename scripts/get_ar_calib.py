@@ -1,4 +1,4 @@
-# !/usr/bin/env python
+#!/usr/bin/env python
 
 import rospy
 import tf
@@ -13,8 +13,7 @@ import visualization_msgs.msg
 
 markernum = '2'
 measured_translation = [0.06991+0.01036+0.0225, -0.0569, -0.0055]
-forearm_marker_rot = numpy.array( [[-1, 0, 0], [0, 0, -1], [0, -1, 0]] )
-
+forearm_marker_rot = numpy.array( [[-1, 0, 0], [0, 0, -1], [0, 1, 0]] )
 
 def getPoseFromMatrix(matrix):
     scale, shear, angles, trans, persp = tf.transformations.decompose_matrix(numpy.linalg.inv(matrix))
@@ -76,7 +75,10 @@ while not rospy.is_shutdown():
     marker_pose = getPoseFromMatrix(base_marker)
 
     base_camera = numpy.dot(marker_camera, base_marker)
-    print "Transformation:", getTfFromMatrix(base_camera)
+    trans, rot = getTfFromMatrix(base_camera)
+
+    tf_broadcaster.sendTransform(trans, rot, rospy.Time.now(), "/camera_link", "/base")
+
     camera_pose = getPoseFromMatrix(base_camera)
 
 
