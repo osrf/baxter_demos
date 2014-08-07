@@ -1,7 +1,9 @@
+<!--TODO: modify robot_description using xacro to include Kinect-->
 <launch>
   <include file="$(find openni_launch)/launch/openni.launch"/>
 
   <node pkg="baxter_demos" name="broadcast_camera_tf" type="broadcast_camera_tf.py">
     <rosparam command="load" file="$(find baxter_demos)/config/base_camera_tf.yaml" />
   </node>
+
 </launch>

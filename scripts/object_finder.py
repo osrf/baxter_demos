@@ -67,9 +67,7 @@ class ObjectFinder(CameraSubscriber):
         cv2.createTrackbar("threshold 2", edge_win, 0, 2000, nothing)
 
         if method == 'edge':
-            cv2.createTrackbar("threshold 1", processed_win, 500, 2000, nothing)
-            cv2.createTrackbar("threshold 2", processed_win, 10, 2000, nothing)
-            self.detectFunction = self.edgeDetect
+           self.detectFunction = self.edgeDetect
 
         elif method == 'color':
             cv2.createTrackbar("blur", processed_win, 12, 50, nothing)
