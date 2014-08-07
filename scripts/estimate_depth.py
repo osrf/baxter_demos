@@ -6,14 +6,14 @@ import baxter_interface
 import cv, cv2, cv_bridge
 import numpy
 import tf
-from math import atan2, pi
+from math import atan2, pi, sqrt
 
 import common
 import ik_command
 
 import image_geometry
 
-from baxter_demos.msg import BlobInfo
+from baxter_demos.msg import BlobInfo, BlobInfoArray
 
 from sensor_msgs.msg import Image, CameraInfo, Range
 
@@ -29,6 +29,7 @@ class DepthEstimator:
         self.limb = limb
         self.limb_iface = baxter_interface.Limb(limb)
 
+        self.centroid = None
         self.ir_reading = None
         self.camera_model = None
         self.goal_pose = None
@@ -48,18 +49,37 @@ class DepthEstimator:
 
     def subscribe(self):
         topic = "object_tracker/"+self.limb+"/centroid"
-        self.centroid_sub = rospy.Subscriber(topic, BlobInfo, self.centroid_callback)
+        self.centroid_sub = rospy.Subscriber(topic, BlobInfoArray, self.centroid_callback)
         topic = "/robot/range/"+self.limb+"_hand_range/state"
         self.ir_sub = rospy.Subscriber(topic, Range, self.ir_callback)
         topic = "/cameras/"+self.limb+"_hand_camera/camera_info"
         self.info_sub = rospy.Subscriber(topic, CameraInfo, self.info_callback)
 
-    def centroid_callback(self, data):
-        self.centroid = (data.centroid.x, data.centroid.y)
+    def currentCentroidDistance(self, blob):
+        return sqrt((self.centroid[0]-blob.centroid.x)**2 +
+                    (self.centroid[1]-blob.centroid.y)**2)
+    
+    def findBlobInfoFromArray(self, data):
+        blobs = data.blobs
+        if len(blobs) <= 0:
+            return None, None
+        if self.centroid == None:
+            # Just get the top out of the stack
+            # TODO: could get the one closest to the camera center
+            return (blobs[0].centroid.x, blobs[0].centroid.y), blobs[0].axis
 
-        if self.centroid is not (-1, -1) and self.camera_model is not None:
+        # Get the centroid closest to the old centroid
+        blobs.sort(key = self.currentCentroidDistance)
+        return (blobs[0].centroid.x, blobs[0].centroid.y), blobs[0].axis
+            
+
+    def centroid_callback(self, data):
+        
+        self.centroid, self.axis = self.findBlobInfoFromArray(data)
+
+        if self.centroid is not None and self.camera_model is not None and self.axis is not None:
             #make this more readable
-            self.axis = numpy.concatenate( (numpy.array( unmap(data.axis.points[0]) ), numpy.array( unmap(data.axis.points[1])) ) )
+            self.axis = numpy.concatenate( (numpy.array( unmap(self.axis.points[0]) ), numpy.array( unmap(self.axis.points[1])) ) )
 
             pos = self.solve_goal_pose()
             if pos is None:
@@ -120,7 +140,7 @@ class DepthEstimator:
     def ir_callback(self, data):
         self.ir_reading = data.range
         if self.ir_reading > 60:
-            print "Invalid IR reading"
+            rospy.loginfo( "Invalid IR reading" )
             self.ir_reading = 0.4
 
     def info_callback(self, data):

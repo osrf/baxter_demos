@@ -11,7 +11,7 @@ robot coordinates, and commands the hand to into grasping range
 import sys
 import argparse
 
-from math import pi
+from math import pi, sqrt
 
 import rospy
 import baxter_interface
@@ -27,7 +27,7 @@ import ik_command
 from std_msgs.msg import Bool
 
 from baxter_demos.msg import (
-    BlobInfo
+    BlobInfo, BlobInfoArray
 )
 
 from sensor_msgs.msg import (
@@ -78,7 +78,8 @@ class VisualCommand():
 
     def subscribe(self):
         topic = "object_tracker/"+self.limb+"/centroid"
-        self.centroid_sub = rospy.Subscriber(topic, BlobInfo, self.centroid_callback)
+        self.centroid_sub = rospy.Subscriber(topic, BlobInfoArray,
+                                             self.centroid_callback)
         topic = "/robot/range/"+self.limb+"_hand_range/state"
         self.ir_sub = rospy.Subscriber(topic, Range, self.ir_callback)
 
@@ -198,20 +199,40 @@ class VisualCommand():
         
         self.states[self.stateidx]()
 
-    def centroid_callback(self, data):
-        
-        self.centroid = numpy.array((data.centroid.x, data.centroid.y))
-        print "centroid:", self.centroid
+    # TODO: this is copy/pasted code from estimate_depth, it could be integrated in a nicer way using parent classes or something
+    def findBlobInfoFromArray(self, data):
+        blobs = data.blobs
+        if len(blobs) <= 0:
+            return None, None
+        if self.centroid == None:
+            # Just get the top out of the stack
+            # TODO: could get the one closest to the camera center
+            return (blobs[0].centroid.x, blobs[0].centroid.y), blobs[0].axis
 
-        if self.centroid[0] == -1 or self.centroid[1] == -1:
-            print "Waiting on centroid from object_finder"
+        # Get the centroid closest to the old centroid
+        blobs_sorted = blobs.sort(key = self.currentCentroidDistance)
+
+        return (blobs[0].centroid.x, blobs[0].centroid.y), blobs[0].axis
+         
+    def currentCentroidDistance(self, blob):
+        return sqrt((self.centroid[0]-blob.centroid.x)**2 +
+                    (self.centroid[1]-blob.centroid.y)**2)
+ 
+    def centroid_callback(self, data):
+        centroid, axis = self.findBlobInfoFromArray(data)
+
+        if centroid is None or axis is None:
+            rospy.loginfo( "Waiting on centroid and axis from object_finder" )
             self.stateidx = 0
             return
-        print data.axis.points[0]
+
+        self.centroid = numpy.array(centroid)
+
+        print axis.points[0]
 
         def unmap(points):
             return [points.x, points.y]
-        self.axis = numpy.concatenate( (numpy.array( unmap(data.axis.points[0]) ), numpy.array( unmap(data.axis.points[1])) ) )
+        self.axis = numpy.concatenate( (numpy.array( unmap(axis.points[0]) ), numpy.array( unmap(axis.points[1])) ) )
 
         print self.axis
         self.visual_servo()

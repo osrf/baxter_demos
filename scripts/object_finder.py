@@ -2,7 +2,9 @@
 
 """Simple Object Tracker by Jackie Kay (jackie@osrfoundation.org)
 User selects a detection method and an object in Baxter's hand camera view.
-This node returns the centroid of the desired object in the camera frame
+This node returns an array of geometric data about all the matching objects
+in the scene.
+Geometric data includes the centroid of the desired object in the camera frame
 and the axis through an object with a straight edge.
 """
 
@@ -19,6 +21,7 @@ from scipy.ndimage import label
 import tf
 
 from sensor_msgs.msg import Image
+from baxter_demos.msg import BlobInfoArray
 from baxter_demos.msg import BlobInfo
 from geometry_msgs.msg import(
     Point,
@@ -102,17 +105,16 @@ class ObjectFinder(CameraSubscriber):
             cv2.createTrackbar("blur", processed_win, 4, 15, nothing)
 
         self.point = point
-        self.centroid = (-1, -1, -1)
-        self.x_extremes = (-1, -1)
-        self.axis = numpy.ones((6))*-1
-        self.prev_axis = None
+        self.centroids = [] 
+        self.axes = []
+        #self.prev_axis = None
         self.prev_img = None
         self.processed = None
         self.canny = None
 
     def publish(self, limb, rate = 100):
         topic = "object_tracker/"+limb+"/centroid"
-        self.handler_pub = rospy.Publisher(topic, BlobInfo)
+        self.handler_pub = rospy.Publisher(topic, BlobInfoArray)
         self.pub_rate = rospy.Rate(5)
 
     def updateGamma(self, g):
@@ -165,39 +167,42 @@ class ObjectFinder(CameraSubscriber):
         contours, hierarchy = cv2.findContours(contour_img, cv2.RETR_LIST,
                                                cv2.CHAIN_APPROX_SIMPLE)
         if contours is None or len(contours) == 0:
-            print "no contours found"
-            self.centroid = None
+            rospy.loginfo( "no contours found" )
+            self.centroids = []
             return
             
         cv2.drawContours(contour_img, contours, -1, (255, 255, 255))
-        contour = self.getLargestContour(contours)
-        if contour == None:
-            print "No largest contour found"
-            self.centroid = None
-            return
-
-        # Find the centroid of this contour
-        moments = cv2.moments(contour)
-        self.centroid = ( int(moments['m10']/moments['m00'] ),
-                          int(moments['m01']/moments['m00']), 0 )
- 
         contour_img = cv2.cvtColor(contour_img, cv2.COLOR_GRAY2BGR)
-        self.canny = self.edgeDetect(contour_img)
+        self.centroids = []
+        self.axes = []
 
-        self.axis = self.getObjectAxes(self.canny, contour)
+        # Sort contours by area
+        contours.sort(key=cv2.contourArea, reverse=True)
+        for contour in contours:
+            # Find the centroid of this contour
+            moments = cv2.moments(contour)
+            if moments['m00'] == 0:
+                continue
+            centroid = ( int(moments['m10']/moments['m00'] ),
+                              int(moments['m01']/moments['m00']), 0 )
+            self.centroids.append( centroid )
+     
+            self.canny = self.edgeDetect(contour_img)
+            axis = self.getObjectAxes(self.canny, contour)
+            self.axes.append( axis )
 
-        # Draw the detected object
-        if self.axis is not None:
-            cv2.line(self.cur_img, tuple(self.axis[0:2]),
-                                   tuple(self.axis[3:5]), (0, 255, 0), 2)
-            self.prev_axis = self.axis
-        elif self.prev_axis is not None:
-            cv2.line(self.cur_img, tuple(self.prev_axis[0:2]),
-                                   tuple(self.prev_axis[3:5]), (0, 255, 0), 2)
+            # Draw the detected object
+            if axis is not None:
+                cv2.line(self.cur_img, tuple(axis[0:2]),
+                                       tuple(axis[3:5]), (0, 255, 0), 2)
+            """    self.prev_axis = self.axis
+            elif self.prev_axis is not None:
+                cv2.line(self.cur_img, tuple(prev_axis[0:2]),
+                                       tuple(prev_axis[3:5]), (0, 255, 0), 2)"""
 
 
-        cv2.circle(img=self.cur_img, center=self.centroid[0:2], radius=2,
-                   color=(0, 255, 0), thickness=-1)
+            cv2.circle(img=self.cur_img, center=centroid[0:2], radius=2,
+                       color=(0, 255, 0), thickness=-1)
         
         self.prev_img = self.img
 
@@ -211,7 +216,7 @@ class ObjectFinder(CameraSubscriber):
                 return
             blur_img = common.blurImage(self.cur_img, blur_radius)
             self.color = blur_img[self.point[1], self.point[0]]
-            self.axis = None
+            self.axes = []
 
     def getObjectAxes(self, img, contour):
         # Get the bounding rectangle around the detected object
@@ -243,7 +248,7 @@ class ObjectFinder(CameraSubscriber):
         # Hough line detection
         lines = cv2.HoughLinesP(subimg, *self.houghArgs)
         if lines is None:
-            print "no lines found"
+            rospy.loginfo( "no lines found" )
             return None
 
         lines = lines.reshape(lines.shape[1], lines.shape[2])
@@ -419,20 +424,12 @@ def main():
 
     rospy.on_shutdown(cleanup)
 
-    """baxter_cams = ["/cameras/right_hand_camera/image", "/cameras/left_hand_camera/image",
-                    "/cameras/head_camera/image"]
-    if args.topic in baxter_cams:
-        print("Getting robot state... ")
-        rs = baxter_interface.RobotEnable(CHECK_VERSION)
-        print("Enabling robot... ")
-        rs.enable()"""
-    
     cv2.namedWindow(raw_win)
     cam = CameraSubscriber()
     cam.subscribe(args.topic)
 
-    print "Click on the object you would like to track, then press any key to\
-          continue."
+    rospy.loginfo( "Click on the object you would like to track, then press\
+                    any key to continue." )
     ml = common.MouseListener()
 
     if "object_finder_test" in args.topic:
@@ -463,19 +460,22 @@ def main():
     cv2.setMouseCallback(raw_win, imgproc.updatePoint)
 
     while not rospy.is_shutdown():
-        if imgproc.centroid is None:
-            #Could probably give this message a better encoding
-            centroid = Point(-1, -1, -1)
-        else:
-            centroid = Point(*imgproc.centroid)
-        msg = BlobInfo()
-        msg.centroid = centroid
-        if imgproc.axis is None:
-            imgproc.axis = -1*numpy.ones(6)
-        msg.axis = Polygon([Point(*imgproc.axis[0:3].tolist()),
-                            Point(*imgproc.axis[3:6].tolist())])
+        blobArray = []
+        
+        for centroid, axis in zip(imgproc.centroids, imgproc.axes):
+            blob = BlobInfo()
+            centroid = Point(*centroid)
+            blob.centroid = centroid
+            if axis is None:
+                axis = -1*numpy.ones(6)
+            blob.axis = Polygon([Point(*axis[0:3].tolist()),
+                                 Point(*axis[3:6].tolist())])
+            blobArray.append(blob)
 
+        msg = BlobInfoArray()
+        msg.blobs = blobArray
         imgproc.handler_pub.publish(msg)
+
         if imgproc.cur_img is not None:
             cv2.imshow(raw_win, imgproc.cur_img)
 

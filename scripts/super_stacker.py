@@ -41,9 +41,7 @@ def main():
         '-l', '--limb', required=True, choices=['left', 'right'],
         help='send joint trajectory to which limb'
     )
-    """required.add_argument(
-        '-f', '--folder', help='path to assets/ folder containing help images'
-    )"""
+
     args = parser.parse_args(rospy.myargv()[1:])
     print args
     limb = args.limb
@@ -61,16 +59,6 @@ def main():
         print "Calibrating gripper"
         gripper_if.calibrate()
 
-    """if args.folder is None:
-        args.folder = "/home/jackie/ros_ws/src/baxter_demos/assets/"
-    # First, get start and end configurations from the user
-    filenames = ["getpoint1.png", "getpoint2.png", "executing_grasp.png"]
-    filenames = [args.folder+filename for filename in filenames]
-    
-    for filename in filenames:
-        if not os.access(filename, os.R_OK):
-            rospy.logerr("Cannot read file at '%s'" % (filename,))
-            return 1"""
 
     limbInterface = baxter_interface.Limb(limb)
 
@@ -79,8 +67,7 @@ def main():
 
 
     # TODO: Get goal pose from kinect
-    """
-    dc = DepthCaller(limb, iksvc)"""
+    """dc = DepthCaller(limb, iksvc)"""
 
     # Subscribe to estimate_depth
     # Move to pose published by estimate_depth

@@ -25,6 +25,7 @@ catkin_python_setup()
 add_message_files(
     FILES
     BlobInfo.msg
+    BlobInfoArray.msg
 )
 
 generate_messages(
