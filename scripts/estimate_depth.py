@@ -17,8 +17,7 @@ from baxter_demos.msg import BlobInfo, BlobInfoArray
 
 from sensor_msgs.msg import Image, CameraInfo, Range
 
-from geometry_msgs.msg import Pose, Point, Quaternion
-
+from geometry_msgs.msg import Pose, PoseArray, Point, Quaternion
 
 def unmap(points):
     return [points.x, points.y]
@@ -29,21 +28,20 @@ class DepthEstimator:
         self.limb = limb
         self.limb_iface = baxter_interface.Limb(limb)
 
-        self.centroid = None
-        self.ir_reading = None
+        self.ir_reading = 0.4 # Derpy default value
         self.camera_model = None
-        self.goal_pose = None
+        self.goal_poses = []
         self.done = False
 
         node = "servo_to_object/"
         self.min_ir_depth = rospy.get_param(node+"min_ir_depth")
         self.object_height = rospy.get_param("/estimate_depth/object_height")
-        self.inc = rospy.get_param(node+"servo_speed")
+        self.inc = float(rospy.get_param(node+"servo_speed"))
         self.camera_x = rospy.get_param(node+"camera_x")
         self.camera_y = rospy.get_param(node+"camera_y")
         
     def publish(self, rate=100):
-        self.handler_pub = rospy.Publisher("object_tracker/"+self.limb+"/goal_pose", Pose)
+        self.handler_pub = rospy.Publisher("object_tracker/"+self.limb+"/goal_poses", PoseArray)
         self.pub_rate = rospy.Rate(rate)
 
 
@@ -59,7 +57,7 @@ class DepthEstimator:
         return sqrt((self.centroid[0]-blob.centroid.x)**2 +
                     (self.centroid[1]-blob.centroid.y)**2)
     
-    def findBlobInfoFromArray(self, data):
+    """def findBlobInfoFromArray(self, data):
         blobs = data.blobs
         if len(blobs) <= 0:
             return None, None
@@ -70,38 +68,38 @@ class DepthEstimator:
 
         # Get the centroid closest to the old centroid
         blobs.sort(key = self.currentCentroidDistance)
-        return (blobs[0].centroid.x, blobs[0].centroid.y), blobs[0].axis
+        return (blobs[0].centroid.x, blobs[0].centroid.y), blobs[0].axis"""
             
 
     def centroid_callback(self, data):
-        
-        self.centroid, self.axis = self.findBlobInfoFromArray(data)
-
-        if self.centroid is not None and self.camera_model is not None and self.axis is not None:
-            #make this more readable
-            self.axis = numpy.concatenate( (numpy.array( unmap(self.axis.points[0]) ), numpy.array( unmap(self.axis.points[1])) ) )
-
-            pos = self.solve_goal_pose()
-            if pos is None:
+        self.goal_poses = []
+        #self.centroid, self.axis = self.findBlobInfoFromArray(data)
+        for blob in data.blobs:
+            centroid = (blob.centroid.x, blob.centroid.y)
+            
+            if blob.axis is None or self.camera_model is None:
                 return
-            #quat = self.limb_iface.endpoint_pose()['orientation']
+            axis = numpy.concatenate((numpy.array(unmap(blob.axis.points[0])),\
+                                      numpy.array(unmap(blob.axis.points[1]))))
+
+            pos = self.solve_goal_pose(centroid, axis)
+            """if pos is None:
+                goal_dict = self.limb_iface.endpoint_pose()
+                goal_dict["position"].z -= self.inc
+                # Convert goal_pose to a Pose object!
+                goal_pose = Pose( position=goal_dict["position"], orientation=goal_dict["orientation"])
+                self.goal_poses.append( goal_pose )
+                continue"""
+
             #Calculate desired orientation
-            theta = self.calculate_angle()
+            theta = self.calculate_angle(axis)
             quat = tf.transformations.quaternion_from_euler(-pi, 0, theta)
 
-            self.goal_pose = Pose(position=Point(*pos), orientation=Quaternion(*quat))
-            # unregister once published. this is risky design, what if the position changes while waiting to publish?
-            if self.goal_pose is not None:
-                #self.centroid_sub.unregister()
-                self.done = True
-            else:
-                #We want to decrease Z to get a valid IR reading
-                goal_pose = self.limb_iface.endpoint_pose()
-                goal_pose["position"].z -= self.inc
-                self.goal_pose = goal_pose
+            self.goal_poses.append( Pose(position=Point(*pos), orientation=Quaternion(*quat)))
+        self.done = True
             
-    def calculate_angle(self):
-        axis = self.axis[2:4] - self.axis[0:2]
+    def calculate_angle(self, axis):
+        axis = axis[2:4] - axis[0:2]
         theta1 = atan2(axis[1], axis[0])
 
         ortho = numpy.array((axis[1], -axis[0]))
@@ -112,25 +110,18 @@ class DepthEstimator:
         else:
             return -theta1
 
-    def solve_goal_pose(self):
-        if self.ir_reading is None:
-            return None
+    def solve_goal_pose(self, centroid, axis):
         # Project centroid into 3D coordinates
-        # TODO: rosparametrize
-        center = (self.centroid[0] - self.camera_x/2, self.centroid[1] - self.camera_y/2) 
+        center = (centroid[0] - self.camera_x/2, centroid[1] - self.camera_y/2) 
         vec = numpy.array( self.camera_model.projectPixelTo3dRay(center) )
         # Scale it by the IR reading
         d_cam = ( self.ir_reading - self.min_ir_depth - self.object_height ) * vec
         d_cam = numpy.concatenate((d_cam, numpy.ones(1)))
-        print "Camera vector:", d_cam
+        #print "Camera vector:", d_cam
 
         # Now transform into the world frame
-        try:
-            self.tf_listener.waitForTransform('/base', '/'+self.limb+'_hand_camera', rospy.Time(), rospy.Duration(4))
-            (trans, rot) = self.tf_listener.lookupTransform('/base', '/'+self.limb+'_hand_camera', rospy.Time(0))
-
-        except tf.ExtrapolationException:
-            return None
+        self.tf_listener.waitForTransform('/base', '/'+self.limb+'_hand_camera', rospy.Time(), rospy.Duration(4))
+        (trans, rot) = self.tf_listener.lookupTransform('/base', '/'+self.limb+'_hand_camera', rospy.Time())
         
         camera_to_base = tf.transformations.compose_matrix(translate=trans, angles=tf.transformations.euler_from_quaternion(rot))
 
@@ -172,8 +163,11 @@ def main():
     print "subscribed"
     rate = rospy.Rate(100)
     while not rospy.is_shutdown():
-        if de.goal_pose is not None:
-            de.handler_pub.publish(de.goal_pose)
+        if len(de.goal_poses) > 0:
+            print de.goal_poses
+            pose_msg = PoseArray()
+            pose_msg.poses = de.goal_poses
+            de.handler_pub.publish(pose_msg)
         rate.sleep()
 
 if __name__ == "__main__":

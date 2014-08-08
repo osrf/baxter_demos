@@ -50,7 +50,6 @@ class VisualCommand():
         self.stateidx = 0
         self.states = self.wait_centroid, self.orient, self.servo_xy, self.servo_z, self.grip_state, self.done_state
         self.done = 0
-        #robot_urdf = URDF.load_from_parameter_server()
 
         self.sign = 1
 
@@ -123,7 +122,6 @@ class VisualCommand():
     def disoriented(self):
         #self.axis is neither parallel nor perpendicular to the camera x-axis
         x_axis = numpy.array([1, 0])
-        #axis = numpy.array( [self.axis[2]-self.axis[0], self.axis[3] - self.axis[1]] )
         axis = self.axis[2:4] - self.axis[0:2]
         ctheta = numpy.dot(x_axis, axis/numpy.linalg.norm(axis))
         print "cos(theta) =", ctheta
@@ -162,9 +160,10 @@ class VisualCommand():
         self.command_ik(direction)
 
     def grip_state(self):
-        self.gripper_if.close()
+        self.gripper_if.close(block=True)
         if not self.gripper_if.gripping():
             print "oh no! I'm not gripping anything"
+            self.gripper_if.open()
         else:
             self.done = 1 
 
@@ -199,19 +198,11 @@ class VisualCommand():
         
         self.states[self.stateidx]()
 
-    # TODO: this is copy/pasted code from estimate_depth, it could be integrated in a nicer way using parent classes or something
+    # The key assumption is that we will be close enough to the object that only one object is visible and if there are multiple contours, the smallest ones will just be noise. Since object_finder gives us the centroids sorted in descending order of area, just pick the top one
     def findBlobInfoFromArray(self, data):
         blobs = data.blobs
         if len(blobs) <= 0:
             return None, None
-        if self.centroid == None:
-            # Just get the top out of the stack
-            # TODO: could get the one closest to the camera center
-            return (blobs[0].centroid.x, blobs[0].centroid.y), blobs[0].axis
-
-        # Get the centroid closest to the old centroid
-        blobs_sorted = blobs.sort(key = self.currentCentroidDistance)
-
         return (blobs[0].centroid.x, blobs[0].centroid.y), blobs[0].axis
          
     def currentCentroidDistance(self, blob):

@@ -10,7 +10,7 @@ from visual_servo import VisualCommand
 import common
 import ik_command
 
-from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Pose, PoseArray
 
 class DepthCaller:
     def __init__(self, limb, iksvc):
@@ -18,11 +18,15 @@ class DepthCaller:
         self.iksvc = iksvc
         self.limb = limb
 
-        self.depth_handler = rospy.Subscriber("object_tracker/"+limb+"/goal_pose", Pose, self.depth_callback)
+        self.depth_handler = rospy.Subscriber("object_tracker/"+limb+"/goal_poses", PoseArray, self.depth_callback)
 
     def depth_callback(self, data):
         print "Estimating depth"
-        pose = data
+        # Get multiple poses. For now, just choose the first one, which corresponds to the biggest object
+        if len(data.poses) <= 0:
+            print "no poses"
+            return
+        pose = data.poses[0]
         p = [pose.position.x, pose.position.y, pose.position.z]+[pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]
         ik_command.service_request(self.iksvc, p, self.limb, blocking=True)
         print p
@@ -115,7 +119,6 @@ def main():
     # Move to pose published by estimate_depth
     while (not dc.done) and (not rospy.is_shutdown()):
         rate.sleep()
-        #pass
 
     print "Starting visual servoing"
     

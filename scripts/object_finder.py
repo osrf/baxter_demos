@@ -74,7 +74,7 @@ class ObjectFinder(CameraSubscriber):
 
         elif method == 'color':
             cv2.createTrackbar("blur", processed_win, 12, 50, nothing)
-            cv2.createTrackbar("radius", processed_win, 22, 128, nothing)
+            cv2.createTrackbar("radius", processed_win, 17, 128, nothing)
             cv2.createTrackbar("open", processed_win, 4, 15, nothing)
             self.detectFunction = self.colorDetect
             self.color = None
