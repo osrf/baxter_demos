@@ -45,7 +45,6 @@ marker_side = .035
 marker_height = 0.06735
 marker_x = -0.03829
 marker_gripper_points = [ [marker_x, -marker_side/2, marker_side+marker_height], [marker_x, marker_side/2, marker_side+marker_height], [marker_x, marker_side/2, marker_height], [marker_x, -marker_side/2, marker_height] ]
-#marker_gripper_points = [ [marker_x, 0, marker_side + marker_height], [marker_x, 0, marker_height] ]
 
 #translation from the center of the marker to the gripper
 marker_translate = [-marker_x, 0, -marker_side/2-marker_height]

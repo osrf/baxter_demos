@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+
 import argparse
 import rospy
 import baxter_interface
@@ -57,23 +58,10 @@ class DepthEstimator:
         return sqrt((self.centroid[0]-blob.centroid.x)**2 +
                     (self.centroid[1]-blob.centroid.y)**2)
     
-    """def findBlobInfoFromArray(self, data):
-        blobs = data.blobs
-        if len(blobs) <= 0:
-            return None, None
-        if self.centroid == None:
-            # Just get the top out of the stack
-            # TODO: could get the one closest to the camera center
-            return (blobs[0].centroid.x, blobs[0].centroid.y), blobs[0].axis
-
-        # Get the centroid closest to the old centroid
-        blobs.sort(key = self.currentCentroidDistance)
-        return (blobs[0].centroid.x, blobs[0].centroid.y), blobs[0].axis"""
-            
 
     def centroid_callback(self, data):
         self.goal_poses = []
-        #self.centroid, self.axis = self.findBlobInfoFromArray(data)
+
         for blob in data.blobs:
             centroid = (blob.centroid.x, blob.centroid.y)
             
@@ -82,14 +70,7 @@ class DepthEstimator:
             axis = numpy.concatenate((numpy.array(unmap(blob.axis.points[0])),\
                                       numpy.array(unmap(blob.axis.points[1]))))
 
-            pos = self.solve_goal_pose(centroid, axis)
-            """if pos is None:
-                goal_dict = self.limb_iface.endpoint_pose()
-                goal_dict["position"].z -= self.inc
-                # Convert goal_pose to a Pose object!
-                goal_pose = Pose( position=goal_dict["position"], orientation=goal_dict["orientation"])
-                self.goal_poses.append( goal_pose )
-                continue"""
+            pos = self.solve_goal_pose(centroid)
 
             #Calculate desired orientation
             theta = self.calculate_angle(axis)
@@ -110,7 +91,7 @@ class DepthEstimator:
         else:
             return -theta1
 
-    def solve_goal_pose(self, centroid, axis):
+    def solve_goal_pose(self, centroid):
         # Project centroid into 3D coordinates
         center = (centroid[0] - self.camera_x/2, centroid[1] - self.camera_y/2) 
         vec = numpy.array( self.camera_model.projectPixelTo3dRay(center) )

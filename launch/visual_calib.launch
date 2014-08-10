@@ -6,6 +6,6 @@
   <node pkg="baxter_demos" name="visual_calib" type="visual_calib.py"
         args="--limb $(arg limb)" required="true">
 
-      <param name="yaml_path" value="$(find baxter_demos)/launch/"/>
+      <param name="yaml_path" value="$(find baxter_demos)/config/"/>
   </node>
 </launch>
