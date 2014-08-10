@@ -2,8 +2,6 @@
 <launch>
   <include file="$(find openni_launch)/launch/openni.launch"/>
 
-  <node pkg="baxter_demos" name="broadcast_camera_tf" type="broadcast_camera_tf.py">
-    <rosparam command="load" file="$(find baxter_demos)/config/base_camera_tf.yaml" />
-  </node>
+  <node pkg="tf" type="static_transform_publisher" name="base_cam_broadcaster args=0.344, -0.058, -0.360 0.008, -0.499, -0.011, 0.867 base camera_link 100"
 
 </launch>
