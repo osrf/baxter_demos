@@ -76,7 +76,8 @@ def colorSegmentation(img, blur_radius, radius, open_radius, color):
     if open_radius != 0:
         open_kernel = numpy.array([open_radius, open_radius])
 
-        bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, open_kernel, iterations = 2)
+        bw = cv2.morphologyEx(bw, cv2.MORPH_OPEN, open_kernel, iterations = 4)
+
     return bw
 
 

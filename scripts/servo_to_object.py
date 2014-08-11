@@ -5,12 +5,19 @@ import baxter_interface
 from baxter_interface import CHECK_VERSION
 import os
 import argparse
+import yaml
 
 from visual_servo import VisualCommand
 import common
 import ik_command
 
 from geometry_msgs.msg import Pose
+
+
+config_folder = rospy.get_param('object_tracker/config_folder')
+
+with open(config_folder+'object_finder.yaml', 'r') as f:
+    params = yaml.load(f)
 
 class DepthCaller:
     def __init__(self, limb, iksvc):
@@ -83,7 +90,7 @@ def main():
     points = []
 
     while not buttonpress.pressed:
-        rospy.sleep(0.5)
+        rospy.sleep(params['button_rate'])
     
     points.append( buttonpress.getButtonPress(limbInterface))
     print "Got first position:"
@@ -94,7 +101,7 @@ def main():
     common.send_image(filenames[1])
 
     while not buttonpress.pressed:
-        rospy.sleep(0.5)
+        rospy.sleep(params['button_rate'])
  
     points.append( buttonpress.getButtonPress(limbInterface))
     print "Got second position:"
@@ -108,7 +115,7 @@ def main():
 
     iksvc, ns = ik_command.connect_service(limb)
 
-    rate = rospy.Rate(100)
+    rate = rospy.Rate(params['rate'])
     dc = DepthCaller(limb, iksvc)
 
     # Subscribe to estimate_depth

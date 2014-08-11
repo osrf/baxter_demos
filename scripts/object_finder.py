@@ -8,6 +8,7 @@ and the axis through an object with a straight edge.
 
 import sys
 import argparse
+import yaml
 from math import sqrt, floor, pi
 import rospy
 import baxter_interface
@@ -25,22 +26,28 @@ from geometry_msgs.msg import(
     Polygon
 )
 
-raw_win = "Hand camera"
-processed_win = "Processed image" 
-edge_win = "Image edges"
 node_name = "object_finder"
+config_folder = rospy.get_param('object_tracker/config_folder')
 
-def getHoughArgs():
+with open(config_folder+'object_finder.yaml', 'r') as f:
+    params = yaml.load(f)
+
+raw_win, processed_win, edge_win = ["raw_win", "processed_win", "edge_win"]
+raw_win = params[raw_win]
+processed_win = params[processed_win]
+edge_win = params[edge_win]
+
+"""def getHoughArgs():
     names = ["rho", "theta", "threshold", "minLineLength", "maxLineGap"]
     node_full_name = node_name+"/"
-    return [rospy.get_param(node_full_name+name) for name in names]
+    return [rospy.get_param(node_full_name+name) for name in names]"""
 
 class CameraSubscriber:
     """Subscribe to the hand camera image and convert the message to an OpenCV-
     friendly format"""
 
-    def __init__(self, cv_wait = 100):
-        self.cv_wait = cv_wait
+    def __init__(self):
+        self.cv_wait = params['rate']
        
     def subscribe(self, topic="/cameras/right_hand_camera/image"):
         self.handler_sub = rospy.Subscriber(topic, Image, self.callback)
@@ -57,49 +64,55 @@ class CameraSubscriber:
         self.cur_img = img
 
 class ObjectFinder(CameraSubscriber):
-    def __init__(self, method, point, gamma = 1, cv_wait = 100):
-        self.cv_wait = cv_wait
-        self.gamma = gamma
+    def __init__(self, method, point):
 
-        cv2.createTrackbar("gamma", processed_win, int(gamma*100), 100, self.updateGamma)
+        self.cv_wait = params['rate']
 
-        cv2.createTrackbar("threshold 1", edge_win, 80, 2000, nothing)
-        cv2.createTrackbar("threshold 2", edge_win, 0, 2000, nothing)
+        cv2.createTrackbar("gamma", processed_win, params['gamma'],
+                           params['gamma_max'], self.updateGamma)
+
+        cv2.createTrackbar("threshold 1", edge_win, params['thresh1'],
+                           params['thresh_max'], nothing)
+        cv2.createTrackbar("threshold 2", edge_win, params['thresh2'],
+                           params['thresh_max'], nothing)
 
         if method == 'edge':
            self.detectFunction = self.edgeDetect
 
         elif method == 'color':
-            cv2.createTrackbar("blur", processed_win, 12, 50, nothing)
-            cv2.createTrackbar("radius", processed_win, 22, 128, nothing)
-            cv2.createTrackbar("open", processed_win, 4, 15, nothing)
+            cv2.createTrackbar("blur", processed_win, params['blur'],
+                               params['blur_max'], nothing)
+            cv2.createTrackbar("radius", processed_win, params['radius'],
+                               params['radius_max'], nothing)
+            cv2.createTrackbar("open", processed_win, params['open'],
+                               params['open_max'], nothing)
             self.detectFunction = self.colorDetect
             self.color = None
 
-            self.houghArgs = getHoughArgs()
+            self.houghArgs = [params['rho'], params['theta'], params['threshold'],
+                              params['minLineLength'], params['maxLineGap']]
 
         elif method == 'star':
-            # Maximum number of filters to apply?
-            maxSize = 45
-            # higher = fewer features retrieved
-            responseThreshold = 40
-            # maximum ratio between Harris of responses. higher = fewer edges
-            lineThresholdProjected = 15
-            #maximum ratio between Harris of sizes. higher = more points
-            lineThresholdBinarized = 20
-            cv2.createTrackbar("Response threshold", processed_win, 20, 90,
+            
+            cv2.createTrackbar("Response threshold", processed_win,
+                                params['response'], params['response_max'],
                                 self.updateDetector)
-            cv2.createTrackbar("Projected line threshold", processed_win, 3, 30,
+            cv2.createTrackbar("Projected line threshold", processed_win,
+                                params['projected'], params['projected_max'],
                                 self.updateDetector)
-            cv2.createTrackbar("Binarized line threshold", processed_win, 3, 30,
+            cv2.createTrackbar("Binarized line threshold", processed_win,
+                                params['binarized'], params['binarized_max'],
                                 self.updateDetector)
-            self.detector = cv2.StarDetector(maxSize, responseThreshold,
-                                    lineThresholdProjected, lineThresholdBinarized) 
+            self.detector = cv2.StarDetector(params['maxSize'],
+                                    params['responseThreshold'],
+                                    params['lineThresholdProjected'],
+                                    params['lineThresholdBinarized']) 
             self.detectFunction = self.starDetect
 
         elif method == 'watershed':
             self.detectFunction = self.watershedDetect
-            cv2.createTrackbar("blur", processed_win, 4, 15, nothing)
+            cv2.createTrackbar("blur", processed_win, params['blur'],
+                               params['blur_max'], nothing)
 
         self.point = point
         self.centroid = (-1, -1, -1)
@@ -110,16 +123,16 @@ class ObjectFinder(CameraSubscriber):
         self.processed = None
         self.canny = None
 
-    def publish(self, limb, rate = 100):
+    def publish(self, limb):
         topic = "object_tracker/"+limb+"/centroid"
         self.handler_pub = rospy.Publisher(topic, BlobInfo)
-        self.pub_rate = rospy.Rate(5)
+        self.pub_rate = rospy.Rate(params['rate'])
 
     def updateGamma(self, g):
         self.gamma = float(g)/100.0
 
     def updateDetector(self):
-        maxSize = 45
+        maxSize = params['maxSize']
         responseThreshold = cv2.getTrackbarPos("Response threshold",
                                                 processed_win)
         lineThresholdProjected = cv2.getTrackbarPos("Projected line threshold",
@@ -218,7 +231,7 @@ class ObjectFinder(CameraSubscriber):
         rect = cv2.boundingRect(contour)
         
         # Calculate a border around the bounding rectangle
-        pad = int((rect[2]+rect[3])/8)
+        pad = int((rect[2]+rect[3])*params['pad'])
 
         if rect[0] < pad:  x = 0
         else: x = rect[0]-pad
@@ -277,13 +290,13 @@ class ObjectFinder(CameraSubscriber):
         samples = numpy.float32(samples)
 
         # Cluster by size, determining the number of clusters by their compactness
-        delta = 1000
+        delta = params['delta']
         prev_compactness = sys.maxint
         for k in range(1, max(2, int(n/3))):
             print "Trying k-means with k="+str(k)+", n="+str(n)
-            max_iter = 10
-            epsilon = 1.0
-            attempts = 10
+            max_iter = params['max_iter']
+            epsilon = params['epsilon']
+            attempts = params['attempts']
             compactness, labels, centers = cv2.kmeans(samples, k,
                                  (cv2.TERM_CRITERIA_EPS +
                                  cv2.TERM_CRITERIA_MAX_ITER, max_iter, epsilon),
@@ -419,13 +432,13 @@ def main():
 
     rospy.on_shutdown(cleanup)
 
-    """baxter_cams = ["/cameras/right_hand_camera/image", "/cameras/left_hand_camera/image",
+    baxter_cams = ["/cameras/right_hand_camera/image", "/cameras/left_hand_camera/image",
                     "/cameras/head_camera/image"]
     if args.topic in baxter_cams:
         print("Getting robot state... ")
         rs = baxter_interface.RobotEnable(CHECK_VERSION)
         print("Enabling robot... ")
-        rs.enable()"""
+        rs.enable()
     
     cv2.namedWindow(raw_win)
     cam = CameraSubscriber()

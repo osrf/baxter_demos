@@ -1,0 +1,57 @@
+# For Hough transform
+rho: 1
+theta: 0.01745329251
+threshold: 30
+minLineLength: 2
+maxLineGap: 5
+
+# Percent of bounding box that gets padded for line detection
+pad: 0.125
+
+# Default slider values
+gamma: 100
+gamma_max: 100
+thresh1: 80
+thresh2: 0
+thresh_max: 2000
+
+# Color detection
+blur: 12
+blur_max: 50
+radius: 22
+radius_max: 128
+open: 4
+open_max: 15
+
+# star
+response: 20
+response_max: 90
+projected: 3
+projected_max: 30
+binarized: 3
+binarized_max: 30
+
+# Maximum number of filters to apply?
+maxSize: 45
+# higher: fewer features retrieved
+responseThreshold: 40
+# maximum ratio between Harris of responses. higher: fewer edges
+lineThresholdProjected: 15
+# maximum ratio between Harris of sizes. higher: more points
+lineThresholdBinarized: 20
+
+#k-means
+delta: 1000
+max_iter: 10
+epsilon: 1.0
+attempts: 10
+
+# window names
+raw_win: "Hand camera"
+processed_win: "Processed image" 
+edge_win: "Image edges"
+
+# publish rate
+rate: 100
+
+# test: default point

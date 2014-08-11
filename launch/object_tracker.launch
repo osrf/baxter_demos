@@ -1,4 +1,3 @@
-
 <launch>
 
   <arg name="limb"     default="right"/>
@@ -7,48 +6,18 @@
 
   <param name="robot_description" textfile="$(find baxter_description)/urdf/baxter.urdf"/>
 
+  <param name="object_tracker/config_folder" value="$(find baxter_demos)/config/"/>
 
   <node pkg="baxter_demos" name="object_finder" type="object_finder.py"
   args="--limb $(arg limb) --method $(arg method)" required="true">
-
-    <!-- Parameters for Hough line detection-->
-    <param name="rho" value="1"/>
-    <param name="theta" value="0.01745329251"/>
-    <param name="threshold" value="30"/>
-    <param name="minLineLength" value="2"/>
-    <param name="maxLineGap" value="5"/>
   </node>
   
   <node pkg="baxter_demos" name="estimate_depth" type="estimate_depth.py"
-  args="--limb $(arg limb)">
-    <param name="object_height" value = "0.06"/>
-    <!--min_ir_depth is the minimum allowed IR depth. Figure this out by placing Baxter's gripper around an object, close enough for it to get a firm grasp on that object, and check the range field of /robot/range/<side>_hand_range/state -->
-  </node>
-
-  <!--Parameters for the baxter_demos/object_tracker application based on Baxter's workspace-->
+  args="--limb $(arg limb)" />
 
   <node pkg="baxter_demos" name="servo_to_object" type="servo_to_object.py"
 args="--limb $(arg limb) --folder $(arg folder)" required="true">
-  <!--speed determines how fast Baxter's arm moves in visual_servo-->
-  <param name="servo_speed" value="0.0095"/>
 
-    <param name="min_ir_depth" value="0.05" />
-    <!--min_pose_z is the minimum allowed height of Baxter's end effector. Figure this out by checking what the z position coordinate of /robot/limb/<side>/endpoint_state is when Baxter's gripper is close to its work surface-->
-    <param name="min_pose_z" value="-0.05"/>
-
-    <!--desired_depth is the IR depth that will be commanded by reconstruct_3d to plan an initial trajectory before visual servoing beings.-->
-    <param name="desired_depth" value="0.15"/>
-
-    <!--the dimensions of Baxter's hand camera-->
-    <param name="camera_x" value="640"/>
-    <param name="camera_y" value="400"/>
-    
-    <param name="goal_ratio_x" value="0.5"/> 
-    <param name="goal_ratio_y" value="0.2"/> 
-
-    <!-- UNUSED: these are the ratios where the edges of Baxter's grippers appear on its right camera, relative to the dimensions of the camera. So, if the width of the camera is 640, you can get the pixel value position of the innermost edge of the left gripper by gripper_min*640-->
-    <param name="gripper_min" value="0.289" />
-    <param name="gripper_max" value="0.75" />
 </node>
 
 
