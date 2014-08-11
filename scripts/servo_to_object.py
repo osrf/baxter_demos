@@ -16,7 +16,7 @@ from geometry_msgs.msg import Pose, PoseArray
 
 config_folder = rospy.get_param('object_tracker/config_folder')
 
-with open(config_folder+'object_finder.yaml', 'r') as f:
+with open(config_folder+'servo_to_object.yaml', 'r') as f:
     params = yaml.load(f)
 
 class DepthCaller:

@@ -71,6 +71,7 @@ class ObjectFinder(CameraSubscriber):
 
         self.cv_wait = params['rate']
 
+        self.gamma = params['gamma']/100.0
         cv2.createTrackbar("gamma", processed_win, params['gamma'],
                            params['gamma_max'], self.updateGamma)
 
@@ -128,7 +129,7 @@ class ObjectFinder(CameraSubscriber):
     def publish(self, limb):
         topic = "object_tracker/"+limb+"/centroid"
 
-        self.handler_pub = rospy.Publisher(topic, BlobInfo)
+        self.handler_pub = rospy.Publisher(topic, BlobInfoArray)
         self.pub_rate = rospy.Rate(params['rate'])
 
     def updateGamma(self, g):

@@ -5,7 +5,7 @@ import sys
 import rospy
 import cv, cv2, cv_bridge
 import numpy
-from baxter_demos.msg import BlobInfo
+from baxter_demos.msg import BlobInfo, BlobInfoArray
 from sensor_msgs.msg import Image
 import argparse
 
@@ -47,22 +47,23 @@ def main():
 
         # load and display segmented image
         #seg_img = cv2.imread(img_path+img_name)
-        cv2.waitKey(100)
+        #cv2.waitKey(100)
 
         def callback(data):
-            global centroid, axis
+            pass
+            #global centroid, axis
             # get the centroid and axis found in object_finder
-            centroid = (data.centroid.x, data.centroid.y)
-            axis = [[data.axis.points[i].x, data.axis.points[i].y] for i in range(2)]
+            #centroid = (data.centroid.x, data.centroid.y)
+            #axis = [[data.axis.points[i].x, data.axis.points[i].y] for i in range(2)]
 
-        object_sub = rospy.Subscriber("object_tracker/right/centroid", BlobInfo, callback)
+        object_sub = rospy.Subscriber("object_tracker/right/centroid", BlobInfoArray, callback)
 
         while not rospy.is_shutdown():
             img_pub.publish(color_msg)
             cv2.imshow("Test image", color_img)
             #Press space when satisfied (user might mess with params in other window)
 
-            if cv2.waitKey(100) == 32 and centroid is not None and axis is not None:
+            if cv2.waitKey(100) == 32:
                 break
         
         # Process the segmented image a little    
