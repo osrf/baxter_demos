@@ -19,7 +19,7 @@
     <param name="maxLineGap" value="5"/>
   </node>
   
-  <node pkg="baxter_demos" name="estimate_depth" type="estimate_depth.py"
+  <node pkg="baxter_demos" name="estimate_depth" type="get_goal_poses.py"
   args="--limb $(arg limb)">
     <param name="object_height" value = "0.06"/>
     <!--min_ir_depth is the minimum allowed IR depth. Figure this out by placing Baxter's gripper around an object, close enough for it to get a firm grasp on that object, and check the range field of /robot/range/<side>_hand_range/state -->

@@ -58,7 +58,6 @@ class DepthEstimator:
         return sqrt((self.centroid[0]-blob.centroid.x)**2 +
                     (self.centroid[1]-blob.centroid.y)**2)
     
-
     def centroid_callback(self, data):
         self.goal_poses = []
 
@@ -137,7 +136,6 @@ def main():
 
     rospy.init_node("estimate_depth")
     
-
     de = DepthEstimator(limb)
     de.subscribe()
     de.publish()
