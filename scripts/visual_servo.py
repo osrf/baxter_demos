@@ -10,6 +10,7 @@ robot coordinates, and commands the hand to into grasping range
 
 import sys
 import argparse
+import yaml
 
 from math import pi, sqrt
 
@@ -35,6 +36,10 @@ from sensor_msgs.msg import (
 )
 
 from geometry_msgs.msg import(Point)
+
+config_folder = rospy.get_param('object_tracker/config_folder')
+with open(config_folder+'servo_to_object.yaml', 'r') as f:
+    params = yaml.load(f)
 
 class VisualCommand():
     def __init__(self, iksvc, limb):
@@ -62,18 +67,26 @@ class VisualCommand():
         
         self.wristlim = joint.limit
 
-        paramnames = ["servo_speed", "min_pose_z", "min_ir_depth"]
+        """paramnames = ["servo_speed", "min_pose_z", "min_ir_depth"]
         paramvals = []
         for param in paramnames:
             topic = "/servo_to_object/"
             paramvals.append(rospy.get_param(topic+param))
         self.inc, self.min_pose_z, self.min_ir_depth = tuple(paramvals)
         self.goal_pos = (rospy.get_param(topic+"camera_x")*float(rospy.get_param(topic+"goal_ratio_x")), rospy.get_param(topic+"camera_y")*float(rospy.get_param(topic+"goal_ratio_y")))
-        self.grip_height = self.min_pose_z
+        self.grip_height = self.min_pose_z"""
 
-    def publish(self, rate=100):
+        self.inc = params['servo_speed']
+        self.angle_inc = params['angle_inc']
+        self.min_pose_z = params['min_pose_z']
+        self.min_ir_depth = params['min_ir_depth']
+        self.goal_pos = (params['camera_x']*params['goal_ratio_x'],\
+                         params['camera_y']*params['goal_ratio_y'])
+        
+
+    def publish(self):
         self.handler_pub = rospy.Publisher("object_tracker/grasp_ready", Bool)
-        self.pub_rate = rospy.Rate(rate)
+        self.pub_rate = rospy.Rate(params['rate'])
 
     def subscribe(self):
         topic = "object_tracker/"+self.limb+"/centroid"
@@ -101,7 +114,7 @@ class VisualCommand():
 
     def orient(self):
         print "Orienting"
-        inc = pi/180
+        inc = self.angle_inc
         #Turn until we are aligned with the axis provided by object_finder
         #TODO: more clever and efficient turning
 
@@ -183,8 +196,8 @@ class VisualCommand():
         #So this is not a proper state machine right now. In fact it's pretty messy.
         
         #Maybe experiment with making this proportional to Z-coordinate or contour size
-        threshold = 10
-        if self.disoriented() and self.ir_reading > 0.15:
+        threshold = params['threshold']
+        if self.disoriented() and self.ir_reading > params['ir_thresh']:
             print "I am disoriented"
             self.stateidx = 1
         elif abs(d[0]) > threshold and abs(d[1]) > threshold:

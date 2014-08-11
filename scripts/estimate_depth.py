@@ -3,6 +3,7 @@
 import argparse
 import rospy
 import baxter_interface
+import yaml
 
 import cv, cv2, cv_bridge
 import numpy
@@ -20,6 +21,11 @@ from sensor_msgs.msg import Image, CameraInfo, Range
 
 from geometry_msgs.msg import Pose, PoseArray, Point, Quaternion
 
+config_folder = rospy.get_param('object_tracker/config_folder')
+
+with open(config_folder+'servo_to_object.yaml', 'r') as f:
+    params = yaml.load(f)
+
 def unmap(points):
     return [points.x, points.y]
 
@@ -34,12 +40,18 @@ class DepthEstimator:
         self.goal_poses = []
         self.done = False
 
-        node = "servo_to_object/"
+        """node = "servo_to_object/"
         self.min_ir_depth = rospy.get_param(node+"min_ir_depth")
         self.object_height = rospy.get_param("/estimate_depth/object_height")
         self.inc = float(rospy.get_param(node+"servo_speed"))
         self.camera_x = rospy.get_param(node+"camera_x")
-        self.camera_y = rospy.get_param(node+"camera_y")
+        self.camera_y = rospy.get_param(node+"camera_y")"""
+
+        self.inc = params['servo_speed']
+        self.min_ir_depth = params['min_ir_depth']
+        self.camera_x = params['camera_x'] 
+        self.camera_y = params['camera_y'] 
+        self.object_height = params['object_height']
         
     def publish(self, rate=100):
         self.handler_pub = rospy.Publisher("object_tracker/"+self.limb+"/goal_poses", PoseArray)
