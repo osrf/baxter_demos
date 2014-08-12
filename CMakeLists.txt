@@ -1,18 +1,12 @@
 cmake_minimum_required(VERSION 2.4.6)
 project(baxter_demos)
-#include($ENV{ROS_ROOT}/core/rosbuild/rosbuild.cmake)
 
-# Set the build type.  Options are:
-#  Coverage       : w/ debug symbols, w/o optimization, w/ code-coverage
-#  Debug          : w/ debug symbols, w/o optimization
-#  Release        : w/o debug symbols, w/ optimization
-#  RelWithDebInfo : w/ debug symbols, w/ optimization
-#  MinSizeRel     : w/o debug symbols, w/ optimization, stripped binaries
-#set(ROS_BUILD_TYPE RelWithDebInfo)
+find_package(OpenCV REQUIRED)
 
-#rosbuild_init()
+find_package(PCL 1.7 REQUIRED COMPONENTS common io)
 
 find_package(catkin REQUIRED COMPONENTS
+    roscpp
     rospy
     baxter_interface
     std_msgs
@@ -35,7 +29,8 @@ generate_messages(
 )
 
 catkin_package(
-    CATKIN_DEPENDS message_runtime
+    CATKIN_DEPENDS message_runtime roscpp cv_bridge sensor_msgs
+    DEPENDS OpenCV2
 )
 
 install(
@@ -50,21 +45,10 @@ install(
   USE_SOURCE_PERMISSIONS
 )
 
+include_directories(${PCL_INCLUDE_DIRS})
+link_directories(${PCL_DEFINITIONS})
 
-#set the default path for built executables to the "bin" directory
-#set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
-#set the default path for built libraries to the "lib" directory
-#set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
+# Need to include OpenCV, PCL
+add_executable(object_finder_3d src/object_finder_3d.cpp)
+target_link_libraries(object_finder_3d ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES})
 
-#uncomment if you have defined messages
-#rosbuild_genmsg()
-#uncomment if you have defined services
-#rosbuild_gensrv()
-
-#common commands for building c++ executables and libraries
-#rosbuild_add_library(${PROJECT_NAME} src/example.cpp)
-#target_link_libraries(${PROJECT_NAME} another_library)
-#rosbuild_add_boost_directories()
-#rosbuild_link_boost(${PROJECT_NAME} thread)
-#rosbuild_add_executable(example examples/example.cpp)
-#target_link_libraries(example ${PROJECT_NAME})
