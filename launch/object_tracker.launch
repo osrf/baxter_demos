@@ -12,12 +12,11 @@
   args="--limb $(arg limb) --method $(arg method)" required="true">
   </node>
   
-
   <node pkg="baxter_demos" name="estimate_depth" type="estimate_depth.py"
   args="--limb $(arg limb)" />
 
   <node pkg="baxter_demos" name="servo_to_object" type="servo_to_object.py"
-args="--limb $(arg limb) --folder $(arg folder)" required="true">
+    args="--limb $(arg limb) --folder $(arg folder)" required="true">
 
 </node>
 

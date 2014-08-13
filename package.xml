@@ -19,6 +19,7 @@
 
   <buildtool_depend>catkin</buildtool_depend>
 
+  <build_depend>roscpp</build_depend>
   <build_depend>rospy</build_depend>
   <build_depend>actionlib</build_depend>
   <build_depend>sensor_msgs</build_depend>
@@ -28,7 +29,10 @@
   <build_depend>dynamic_reconfigure</build_depend>
   <build_depend>baxter_core_msgs</build_depend>
   <build_depend>baxter_interface</build_depend>
+  <build_depend>pcl_conversions</build_depend>
+  <build_depend>tf</build_depend>
 
+  <run_depend>roscpp</run_depend>
   <run_depend>message_runtime</run_depend>
   <run_depend>rospy</run_depend>
   <run_depend>actionlib</run_depend>
@@ -39,6 +43,8 @@
   <run_depend>dynamic_reconfigure</run_depend>
   <run_depend>baxter_core_msgs</run_depend>
   <run_depend>baxter_interface</run_depend>
+  <run_depend>pcl_conversions</run_depend>
+  <run_depend>tf</run_depend>
 
 </package>
 

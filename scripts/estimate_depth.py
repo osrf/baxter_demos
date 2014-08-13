@@ -107,7 +107,7 @@ class DepthEstimator:
         center = (centroid[0] - self.camera_x/2, centroid[1] - self.camera_y/2) 
         vec = numpy.array( self.camera_model.projectPixelTo3dRay(center) )
         # Scale it by the IR reading
-        d_cam = ( self.ir_reading - self.min_ir_depth - self.object_height ) * vec
+        d_cam = ( self.ir_reading - self.min_ir_depth - self.object_height/2.0 ) * vec
         d_cam = numpy.concatenate((d_cam, numpy.ones(1)))
         #print "Camera vector:", d_cam
 

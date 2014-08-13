@@ -16,9 +16,9 @@ thresh2: 0
 thresh_max: 2000
 
 # Color detection
-blur: 12
+blur: 20
 blur_max: 50
-radius: 22
+radius: 72
 radius_max: 128
 open: 4
 open_max: 15

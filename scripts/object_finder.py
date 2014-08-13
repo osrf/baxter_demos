@@ -40,11 +40,6 @@ raw_win = params[raw_win]
 processed_win = params[processed_win]
 edge_win = params[edge_win]
 
-"""def getHoughArgs():
-    names = ["rho", "theta", "threshold", "minLineLength", "maxLineGap"]
-    node_full_name = node_name+"/"
-    return [rospy.get_param(node_full_name+name) for name in names]"""
-
 class CameraSubscriber:
     """Subscribe to the hand camera image and convert the message to an OpenCV-
     friendly format"""
@@ -126,8 +121,7 @@ class ObjectFinder(CameraSubscriber):
         self.processed = None
         self.canny = None
 
-    def publish(self, limb):
-        topic = "object_tracker/"+limb+"/centroid"
+    def publish(self, topic):
 
         self.handler_pub = rospy.Publisher(topic, BlobInfoArray)
         self.pub_rate = rospy.Rate(params['rate'])
@@ -179,7 +173,7 @@ class ObjectFinder(CameraSubscriber):
         
         # Find the contour associated with self.point
         contour_img = self.processed.copy()
-        contours, hierarchy = cv2.findContours(contour_img, cv2.RETR_LIST,
+        contours, hierarchy = cv2.findContours(contour_img, cv2.RETR_EXTERNAL,
                                                cv2.CHAIN_APPROX_SIMPLE)
         if contours is None or len(contours) == 0:
             rospy.loginfo( "no contours found" )
@@ -188,6 +182,7 @@ class ObjectFinder(CameraSubscriber):
             
         cv2.drawContours(contour_img, contours, -1, (255, 255, 255))
         contour_img = cv2.cvtColor(contour_img, cv2.COLOR_GRAY2BGR)
+        self.canny = self.edgeDetect(contour_img)
         self.centroids = []
         self.axes = []
 
@@ -202,7 +197,6 @@ class ObjectFinder(CameraSubscriber):
                               int(moments['m01']/moments['m00']), 0 )
             self.centroids.append( centroid )
      
-            self.canny = self.edgeDetect(contour_img)
             axis = self.getObjectAxes(self.canny, contour)
             self.axes.append( axis )
 
@@ -210,15 +204,16 @@ class ObjectFinder(CameraSubscriber):
             if axis is not None:
                 cv2.line(self.cur_img, tuple(axis[0:2]),
                                        tuple(axis[3:5]), (0, 255, 0), 2)
-            """    self.prev_axis = self.axis
-            elif self.prev_axis is not None:
-                cv2.line(self.cur_img, tuple(prev_axis[0:2]),
-                                       tuple(prev_axis[3:5]), (0, 255, 0), 2)"""
-
 
             cv2.circle(img=self.cur_img, center=centroid[0:2], radius=2,
                        color=(0, 255, 0), thickness=-1)
-        
+        """for contour in contours:
+            has_centroid = False
+            for centroid in centroid:
+                if cv2.pointPolygonTest(contour, centroid) > 0:        
+                    if has_centroid:"""
+                        # Break and remove this contour and its centroid from play
+
         self.prev_img = self.img
 
     def updatePoint(self, event, x, y, flags, param):
@@ -422,6 +417,8 @@ def main():
                         required=False, help='which detection method to use')
     parser.add_argument('-t', '--topic', required=False,
                         help='which image topic to listen on')
+    parser.add_argument('-p', '--pub_topic', required=False,
+                        help='which topic to publish to')
 
     args = parser.parse_args(rospy.myargv()[1:])
     if args.limb is None:
@@ -432,6 +429,8 @@ def main():
         args.method = 'color'
     if args.topic is None:
         args.topic = "/cameras/"+limb+"_hand_camera/image"
+    if args.pub_topic is None:
+        args.pub_topic = "object_tracker/"+limb+"/centroid"
 
     print args
     print("Initializing node... ")
@@ -440,8 +439,8 @@ def main():
     rospy.on_shutdown(cleanup)
 
     baxter_cams = ["/cameras/right_hand_camera/image",
-                    "/cameras/left_hand_camera/image",
-                    "/cameras/head_camera/image"]
+                   "/cameras/left_hand_camera/image",
+                   "/cameras/head_camera/image"]
     if args.topic in baxter_cams:
         print("Getting robot state... ")
         rs = baxter_interface.RobotEnable(CHECK_VERSION)
@@ -449,18 +448,18 @@ def main():
         rs.enable()
     
     cv2.namedWindow(raw_win)
+    cv2.namedWindow(edge_win)
     cam = CameraSubscriber()
     cam.subscribe(args.topic)
-
-    rospy.loginfo( "Click on the object you would like to track, then press\
-                    any key to continue." )
-    ml = common.MouseListener()
 
     if "object_finder_test" in args.topic:
         # Hardcoded position
         point = (322, 141)
-        
     else:
+        rospy.loginfo( "Click on the object you would like to track, then press\
+                        any key to continue." )
+        ml = common.MouseListener()
+
         cv2.setMouseCallback(raw_win, ml.onMouse)
         while not ml.done:
             if cam.cur_img is not None:
@@ -468,7 +467,6 @@ def main():
 
             cv2.waitKey(cam.cv_wait)
         point = (ml.x_clicked, ml.y_clicked)
-    detectMethod = None
 
     cam.unsubscribe()
 
@@ -479,8 +477,7 @@ def main():
     print "Starting image processor"
     imgproc = ObjectFinder(args.method, point)
     imgproc.subscribe(args.topic)
-    imgproc.publish(limb)
-    cv2.namedWindow(edge_win)
+    imgproc.publish(args.pub_topic)
     cv2.setMouseCallback(raw_win, imgproc.updatePoint)
 
     while not rospy.is_shutdown():

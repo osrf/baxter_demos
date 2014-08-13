@@ -55,6 +55,10 @@ def main():
     required.add_argument(
         '-f', '--folder', help='path to assets/ folder containing help images'
     )
+    required.add_argument('-t', '--topic', required=False,
+                          help='which topic to subscribe to')
+
+
     args = parser.parse_args(rospy.myargv()[1:])
     print args
     limb = args.limb
@@ -74,6 +78,8 @@ def main():
 
     if args.folder is None:
         args.folder = "/home/jackie/ros_ws/src/baxter_demos/assets/"
+    if args.topic is None:
+        args.topic = "object_tracker/"+args.limb+"/centroid"
     # First, get start and end configurations from the user
     filenames = ["getpoint1.png", "getpoint2.png", "executing_grasp.png"]
     filenames = [args.folder+filename for filename in filenames]
@@ -131,7 +137,7 @@ def main():
     
     # Subscribe to object_finder and start visual servoing/grasping
     vc = VisualCommand(iksvc, limb)
-    vc.subscribe()
+    vc.subscribe(args.topic)
 
     while (not vc.done) and (not rospy.is_shutdown()):
         rate.sleep()

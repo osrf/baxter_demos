@@ -53,7 +53,8 @@ class VisualCommand():
         self.gripper_if = baxter_interface.Gripper(limb)
         self.tf_listener = tf.TransformListener()
         self.stateidx = 0
-        self.states = self.wait_centroid, self.orient, self.servo_xy, self.servo_z, self.grip_state, self.done_state
+        self.states = self.wait_centroid, self.orient, self.servo_xy,\
+                      self.servo_z, self.grip_state, self.done_state
         self.done = 0
 
         self.sign = 1
@@ -67,15 +68,6 @@ class VisualCommand():
         
         self.wristlim = joint.limit
 
-        """paramnames = ["servo_speed", "min_pose_z", "min_ir_depth"]
-        paramvals = []
-        for param in paramnames:
-            topic = "/servo_to_object/"
-            paramvals.append(rospy.get_param(topic+param))
-        self.inc, self.min_pose_z, self.min_ir_depth = tuple(paramvals)
-        self.goal_pos = (rospy.get_param(topic+"camera_x")*float(rospy.get_param(topic+"goal_ratio_x")), rospy.get_param(topic+"camera_y")*float(rospy.get_param(topic+"goal_ratio_y")))
-        self.grip_height = self.min_pose_z"""
-
         self.inc = params['servo_speed']
         self.angle_inc = params['angle_inc']
         self.min_pose_z = params['min_pose_z']
@@ -88,8 +80,7 @@ class VisualCommand():
         self.handler_pub = rospy.Publisher("object_tracker/grasp_ready", Bool)
         self.pub_rate = rospy.Rate(params['rate'])
 
-    def subscribe(self):
-        topic = "object_tracker/"+self.limb+"/centroid"
+    def subscribe(self, topic):
         self.centroid_sub = rospy.Subscriber(topic, BlobInfoArray,
                                              self.centroid_callback)
         topic = "/robot/range/"+self.limb+"_hand_range/state"
@@ -255,8 +246,12 @@ def main():
         '-l', '--limb', required=True, choices=['left', 'right'],
         help='send joint trajectory to which limb'
     )
+    required.add_argument('-t', '--topic', required=False,
+                          help='which topic to subscribe to')
 
     args = parser.parse_args(rospy.myargv()[1:])
+    if args.topic is None:
+        args.topic = "object_tracker/"+self.limb+"/centroid"
     limb = args.limb
 
     rospy.init_node("visual_servo")
@@ -292,7 +287,7 @@ def main():
     iksvc, ns = ik_command.connect_service(limb)
 
     command = VisualCommand(iksvc, limb)
-    command.subscribe()
+    command.subscribe(args.topic)
     command.publish()
     while not rospy.is_shutdown():
         command.handler_pub.publish(command.done)
