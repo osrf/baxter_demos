@@ -3,7 +3,7 @@ project(baxter_demos)
 
 find_package(OpenCV REQUIRED)
 
-find_package(PCL 1.7 REQUIRED COMPONENTS common io)
+find_package(PCL 1.7 REQUIRED COMPONENTS common io filters segmentation search visualization)
 
 find_package(catkin REQUIRED COMPONENTS
     roscpp
@@ -12,6 +12,8 @@ find_package(catkin REQUIRED COMPONENTS
     std_msgs
     geometry_msgs
     message_generation
+    pcl_conversions
+    tf
 )
 
 catkin_python_setup()
@@ -29,7 +31,7 @@ generate_messages(
 )
 
 catkin_package(
-    CATKIN_DEPENDS message_runtime roscpp cv_bridge sensor_msgs
+    CATKIN_DEPENDS message_runtime roscpp cv_bridge sensor_msgs pcl_conversions tf
     DEPENDS OpenCV2
 )
 
@@ -46,9 +48,10 @@ install(
 )
 
 include_directories(${PCL_INCLUDE_DIRS})
-link_directories(${PCL_DEFINITIONS})
+link_directories(${PCL_LIBRARY_DIRS})
+add_definitions(${PCL_DEFINITIONS}) 
 
 # Need to include OpenCV, PCL
 add_executable(object_finder_3d src/object_finder_3d.cpp)
-target_link_libraries(object_finder_3d ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES})
+target_link_libraries(object_finder_3d ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${PCL_LIBRARIES})
 
