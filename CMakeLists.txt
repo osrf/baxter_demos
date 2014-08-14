@@ -1,9 +1,13 @@
 cmake_minimum_required(VERSION 2.4.6)
+if(COMMAND cmake_policy)
+    cmake_policy(SET CMP0003 NEW)
+endif(COMMAND cmake_policy)
+
 project(baxter_demos)
 
 find_package(OpenCV REQUIRED)
 
-find_package(PCL 1.7 REQUIRED COMPONENTS common io filters segmentation search visualization)
+find_package(PCL 1.7.1 REQUIRED COMPONENTS common io filters segmentation search visualization features)
 
 find_package(catkin REQUIRED COMPONENTS
     roscpp
@@ -53,5 +57,5 @@ add_definitions(${PCL_DEFINITIONS})
 
 # Need to include OpenCV, PCL
 add_executable(object_finder_3d src/object_finder_3d.cpp)
-target_link_libraries(object_finder_3d ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${PCL_LIBRARIES})
+target_link_libraries(object_finder_3d ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${PCL_LIBRARIES} ${PCL_FEATURE_LIBRARIES})
 
