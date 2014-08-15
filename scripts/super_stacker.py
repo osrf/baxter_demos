@@ -24,7 +24,7 @@ class DepthCaller:
         self.depth_handler = rospy.Subscriber("object_tracker/"+limb+"/goal_poses", PoseArray, self.depth_callback)
 
     def depth_callback(self, data):
-        print "Estimating depth"
+        print "Getting object poses"
         self.object_poses = []
         for pose in data.poses:
             p = [pose.position.x, pose.position.y, pose.position.z]+[pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]
