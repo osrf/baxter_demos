@@ -3,6 +3,7 @@
   <arg name="method"   default="color"/>
   <arg name="topic"   default="object_finder_test"/>
   <arg name="folder"   default="$(find baxter_demos)/tests/assets/block_imgs/"/>
+  <param name="/object_tracker/config_folder"   value="$(find baxter_demos)/config/"/>
 
   <node pkg="baxter_demos" name="object_finder" type="object_finder.py"
   args="--limb $(arg limb) --method $(arg method) --topic $(arg topic)" required="true">
