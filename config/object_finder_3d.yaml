@@ -1,0 +1,7 @@
+radius: 8
+filter_min: 0
+filter_max: 4
+distance_threshold: 10
+point_color_threshold: 6
+region_color_threshold: 5
+min_cluster_size: 750

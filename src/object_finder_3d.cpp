@@ -57,6 +57,8 @@ private:
 
     bool has_desired_color;
     bool has_cloud;
+
+    string frame_id;
     pcl::PointRGB desired_color;
     
     pcl::IndicesPtr indices;
@@ -67,6 +69,8 @@ private:
     pcl::RegionGrowingRGB<pcl::PointXYZRGB> reg;
     pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud;
     pcl::PointCloud <pcl::PointXYZRGB>::Ptr colored_cloud;
+
+    vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> cloud_ptrs;
     vector<geometry_msgs::Pose> object_poses;
     tf::TransformListener tf_listener;
 
@@ -173,7 +177,9 @@ public:
      
         colored_cloud = reg.getColoredCloud ();
 
-        vector<pcl::PointIndices> blob_clusters;
+        //vector<pcl::PointIndices> blob_clusters;
+
+        cloud_ptrs.clear();
         // Select the correct color clouds from the segmentation
         // TODO: this is a major bottleneck. improve performance
         for (int i = 0; i < clusters.size(); i++){
@@ -195,89 +201,79 @@ public:
 
             // Check if avg is within the clicked color
             if (isPointWithinDesiredRange(avg, desired_color, radius)){
-                blob_clusters.push_back(clusters[i]);
+                //blob_clusters.push_back(clusters[i]);
+                pcl::PointCloud<pcl::PointXYZRGB> cloud_subset = pcl::PointCloud<pcl::PointXYZRGB>(*cloud, cluster.indices);
+                pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_ptr = cloud_subset.makeShared();
+
+                cloud_ptrs.push_back(cloud_ptr);
+                
             }
         }
 
-        object_poses = vector<geometry_msgs::Pose>();
+        /*
         for (int i = 0; i < blob_clusters.size(); i++){
-            // Get all points in the segmentation in cloud_iterator
-            const pcl::PointCloud<pcl::PointXYZRGB> cloud_subset =
-                pcl::PointCloud<pcl::PointXYZRGB>(*cloud, blob_clusters[i].indices);
-            //Eigen::Vector4f centroid;
-            Eigen::Vector3f centroid;
+            pcl::PointCloud<pcl::PointXYZ> cloud_xyz;
+            pcl::copyPointCloud(*cloud, blob_clusters[i].indices, cloud_xyz );
+            const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_ptr = pcl::PointCloud<pcl::PointXYZ>::Ptr(&cloud_xyz);
+            cloud_ptrs.push_back(cloud_ptr);
+        }*/
 
-            //TODO: transform to base frame
+        cout << "Clusters found: " << cloud_ptrs.size() << endl;
+        object_poses = vector<geometry_msgs::Pose>();
+
+        pcl::MomentOfInertiaEstimation<pcl::PointXYZRGB> inertia;
+        for (int i = 0; i < cloud_ptrs.size(); i++){
+
+            inertia.setInputCloud(cloud_ptrs[i]);
 
             //get the moment of inertia
-            pcl::MomentOfInertiaEstimation<pcl::PointXYZRGB> inertia;
-            inertia.setInputCloud(cloud_subset);
             inertia.compute();
 
             //this centroid will be off because we get only 3 faces of a cube
-            inertia.getMassCenter(centroid);
+
+            pcl::PointXYZRGB min_point_OBB;
+            pcl::PointXYZRGB max_point_OBB;
+            pcl::PointXYZRGB position_OBB;
+            Eigen::Matrix3f rotational_matrix_OBB;
+            inertia.getOBB (min_point_OBB, max_point_OBB, position_OBB, rotational_matrix_OBB);
+
             geometry_msgs::Point position;
-            position.x = centroid(0);
-            position.y = centroid(1);
-            position.z = centroid(2);
+            position.x = position_OBB.x;
+            position.y = position_OBB.y;
+            position.z = position_OBB.z;
 
-            vector<float> eigenvals(3);
-            vector<Eigen::Vector3f> eigenvecs(3);
-            //Order is major, middle, minor
-            if(!inertia.getEigenVectors(eigenvals[0], eigenvals[1], eigenvals[2]) ||
-               !inertia.getEigenValues(eigenvecs[0], eigenvecs[1], eigenvecs[2]) ){
-                cout << "Couldn't get valid eigenvectors/values for moment of\
-                         inertia calculation" <<endl;
-                return;
-            }
-
-            const Eigen::Vector3f[3] basevecs = [ Eigen::Vector3f(1, 0, 0),
-                        Eigen::Vector3f(0, 1, 0 ), Eigen::Vector3f(0, 0, 1)];
-            //Get orientation from eigenvectors/values
-            /*float[3] angles;
-            Eigen::Matrix3f R = Matrix3d::Identity();
-            for (int j = 0; j < 3; j++){
-                Eigen::Vector3f p = eigenvecs[j];
-                Eigen::Vector3f q = basevecs[j];
-                //get angle between p and a base vec
-                angle = acos( p.normalized().dot( q.normalized() ) )
-                R = R.dot(Eigen::aa(angle, q));
-            }*/
-
-            Eigen::Quaternion q = Eigen::Quaternion.Identity();
-            for (int j = 0; j < 3; j++){
-                Eigen::Quaternion p;
-                q*=p.fromTwoVectors(basevecs[j], eigenvecs[j]);
-            }
+            //Now dat orientation
+            Eigen::Quaternionf q(rotational_matrix_OBB);
+            
+            //Get an oriented bounding box
 
             geometry_msgs::Quaternion orientation;
-            orientation.x = q.x;
-            orientation.y = q.y;
-            orientation.z = q.z;
-            orientation.w = q.w;
+            orientation.w = q.w();
+            orientation.x = q.x();
+            orientation.y = q.y();
+            orientation.z = q.z();
 
-            geometry_msgs::Pose pose;
-            pose.position = position; pose.orientation = orientation;
-            object_poses.push_back(pose);
-
+            geometry_msgs::PoseStamped pose_in;
+            pose_in.pose.position = position; pose_in.pose.orientation = orientation;
+            cout << "Pose in: " << pose_in.pose << endl;
+            pose_in.header.frame_id = frame_id;
+            geometry_msgs::PoseStamped pose_out;
+            pose_in.header.stamp = ros::Time::now();
+            tf_listener.transformPose("/base", pose_in, pose_out);
+            cout << "Pose out: " << pose_out.pose << endl;
+            object_poses.push_back(pose_out.pose);
         }
 
     }
 
     void callback(const sensor_msgs::PointCloud2::ConstPtr& msg){
-
-        //Transform the point cloud msg to the base frame
-
-        sensor_msgs::PointCloud2 msg_out;
-        tf_listener.transformPointCloud("/base", msg, msg_out);
- 
-
+        frame_id = msg->header.frame_id;
         // Members: float x, y, z; uint32_t rgba
         pcl::PointCloud <pcl::PointXYZRGB>::Ptr new_cloud
                                     (new pcl::PointCloud <pcl::PointXYZRGB>);
 
         pcl::PCLPointCloud2 pcl_pc;
-        pcl_conversions::toPCL(*msg_out, pcl_pc);
+        pcl_conversions::toPCL(*msg, pcl_pc);
         pcl::fromPCLPointCloud2(pcl_pc, *new_cloud);
         indices = pcl::IndicesPtr( new vector<int>() );
         pcl::removeNaNFromPointCloud(*new_cloud, *new_cloud, *indices);
@@ -287,7 +283,6 @@ public:
         pass.setFilterFieldName ("z");
         pass.setFilterLimits (filter_min, filter_max);
         pass.filter (*indices);
-
 
         cloud = new_cloud;
         has_cloud = true;
