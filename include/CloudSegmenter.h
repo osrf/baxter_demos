@@ -32,6 +32,8 @@
 
 using namespace std;
 
+const string win_name = "Cloud viewer";
+
 class CloudSegmenter {
 private:
     int radius;
@@ -63,22 +65,24 @@ private:
 
 public:
 
-    pcl::visualization::CloudViewer cloud_viewer;
+    //pcl::visualization::CloudViewer cloud_viewer;
+    pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr getCloudPtr();
+    pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr getClusteredCloudPtr();
     
     bool hasCloud();
     
     bool hasColor();
     static bool isPointWithinDesiredRange(const pcl::PointRGB input_pt,
-                               const pcl::PointRGB desired_pt, int radius){
+                               const pcl::PointRGB desired_pt, int radius);
 
-    CloudSegmenter() : cloud_viewer("Cloud viewer"), indices( new vector<int>());
+    CloudSegmenter();
     //CloudSegmenter();
     void publish_poses();
     //remember to shift-click!
     void getClickedPoint(const pcl::visualization::PointPickingEvent& event,
                          void* args);
-    void renderCloud();
-    void renderClusters();
+    //void renderCloud();
+    //void renderClusters();
     pcl::PointRGB getCloudColorAt(int x, int y);
     pcl::PointRGB getCloudColorAt(int n);
    

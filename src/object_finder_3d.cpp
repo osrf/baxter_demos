@@ -4,17 +4,25 @@
 int main(int argc, char** argv){
     ros::init(argc, argv, "object_finder_3d");
 
-    CloudSegmenter::CloudSegmenter cs;
+    CloudSegmenter cs;
+
+    pcl::visualization::CloudViewer cloud_viewer("Cloud viewer"); 
+    cloud_viewer.registerPointPickingCallback(
+                &CloudSegmenter::getClickedPoint, cs, (void*) NULL );
 
     ros::Rate loop_rate(100);
     //event loop
-    while(ros::ok() && !cs.cloud_viewer.wasStopped()){
+    while(ros::ok() && !cloud_viewer.wasStopped()){
         ros::spinOnce();
         loop_rate.sleep();
         if(cs.hasColor()){
-            cs.renderClusters();
+            //cs.renderClusters();
+            pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud = cs.getClusteredCloudPtr();
+            cloud_viewer.showCloud(cloud);
         } else if(cs.hasCloud()){
-            cs.renderCloud();
+            //cs.renderCloud();
+            pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud = cs.getCloudPtr();
+            cloud_viewer.showCloud(cloud);
         }
         cs.publish_poses();
     }
