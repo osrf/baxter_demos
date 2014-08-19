@@ -30,9 +30,17 @@
 #include <pcl/PCLPointCloud2.h>
 #include <pcl_conversions/pcl_conversions.h>
 
+
+#include "OrientedBoundingBox.h"
+
 using namespace std;
 
+typedef pcl::PointCloud<pcl::PointXYZRGB> PointColorCloud;
+typedef pair<PointColorCloud::Ptr, OrientedBoundingBox> CloudPtrBoxPair;
+typedef map<PointColorCloud::Ptr, OrientedBoundingBox> CloudPtrBoxMap;
+
 const string win_name = "Cloud viewer";
+const float object_side = 0.06; //cheating
 
 class CloudSegmenter {
 private:
@@ -60,8 +68,12 @@ private:
     pcl::PointCloud <pcl::PointXYZRGB>::Ptr colored_cloud;
 
     vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> cloud_ptrs;
+    CloudPtrBoxMap cloud_boxes;
     vector<geometry_msgs::Pose> object_poses;
     tf::TransformListener tf_listener;
+
+
+    void mergeCollidingBoxes();
 
 public:
 

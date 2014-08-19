@@ -3,11 +3,6 @@
 
 #include "CloudSegmenter.h"
 
-#include "OrientedBoundingBox.h"
-
-typedef pcl::PointCloud<pcl::PointXYZRGB> PointColorCloud;
-typedef pair<PointColorCloud::Ptr, OrientedBoundingBox> CloudPtrBoxPair;
-typedef map<PointColorCloud::Ptr, OrientedBoundingBox> CloudPtrBoxMap;
 
 bool CloudSegmenter::isPointWithinDesiredRange(const pcl::PointRGB input_pt,
                                const pcl::PointRGB desired_pt, int radius){
@@ -64,8 +59,9 @@ void CloudSegmenter:: publish_poses(){
 }
 
 //remember to shift-click!
-void CloudSegmenter:: getClickedPoint(const pcl::visualization::PointPickingEvent& event,
-                     void* args){
+void CloudSegmenter:: getClickedPoint(
+                const pcl::visualization::PointPickingEvent& event,
+                void* args){
     int n = event.getPointIndex();
     if (n == -1){
         cout << "Got no point" << endl;
@@ -128,6 +124,40 @@ OrientedBoundingBox getOBBForCloud(PointColorCloud::Ptr cloud_ptr){
 
 }
 
+void CloudSegmenter::mergeCollidingBoxes(){
+    bool collides = true;
+    while(collides){
+        collides = false;
+        for (int i = 0; i < cloud_ptrs.size(); i++){
+            for (int j = 0; j < cloud_ptrs.size(); j++){
+                if (cloud_ptrs[i] == cloud_ptrs[j]){
+                    continue;
+                }
+                if (cloud_boxes[cloud_ptrs[i]].collides_with(cloud_boxes[cloud_ptrs[j]]) ){
+                    collides=true;
+                    //cloud_ptrs[i] = PointColorCloud::Ptr( *cloud_ptrs[i] + *cloud_ptrs[j]));
+                    PointColorCloud newcloud = *cloud_ptrs[i] + *cloud_ptrs[j];
+                    
+                    PointColorCloud::Ptr newptr = newcloud.makeShared();
+                    //cloud_ptrs[i] = newptr;
+                    //cloud_ptrs[j] = newptr;
+                    cloud_boxes.erase(cloud_ptrs[j]);
+                    cloud_ptrs.erase(cloud_ptrs.begin()+j);
+
+                    cloud_boxes.erase(cloud_ptrs[i]);
+                    cloud_ptrs.erase(cloud_ptrs.begin()+i);
+
+                    //push_back new box
+                    cloud_ptrs.push_back(newptr);
+                    cloud_boxes[newptr] = getOBBForCloud(cloud_ptrs.back());
+                    break;
+                }
+            }
+            if(collides) break;
+        }
+    }
+}
+
 void CloudSegmenter:: segmentation(){
     if (!has_desired_color){
         return;
@@ -154,13 +184,14 @@ void CloudSegmenter:: segmentation(){
     colored_cloud = reg.getColoredCloud();
 
     cloud_ptrs.clear();
+
+    cloud_boxes.clear();
     // Select the correct color clouds from the segmentation
     for (int i = 0; i < clusters.size(); i++){
         pcl::PointIndices cluster = clusters[i];
 
         // Get a representative color in the cluster
-        /*
-        float n = cluster.indices.size();
+        int n = cluster.indices.size();
         float r = 0; float g = 0; float b = 0;
         // TODO: this is a major bottleneck. improve performance
         for (int j = 0; j < n; j++){
@@ -172,8 +203,7 @@ void CloudSegmenter:: segmentation(){
         r /= n; g /= n; b /= n;
         cout << "Average color: " << r << ", " << g << ", " << b << endl;
         pcl::PointRGB avg((unsigned char) b, (unsigned char) g, (unsigned char) r);
-        */
-        int n = cluster.indices.size();
+        /*int n = cluster.indices.size();
         pcl::CentroidPoint<pcl::PointXYZRGB> rgb_centroid;
         for (int j = 0; j < n; j++){
             rgb_centroid.add(cloud->at(cluster.indices[j]));
@@ -183,6 +213,9 @@ void CloudSegmenter:: segmentation(){
         rgb_centroid.get(avg_xyz);
         //TODO: test that colors get averaged
         pcl::PointRGB avg(avg_xyz.b, avg_xyz.g, avg_xyz.r);
+
+        cout << "Average color: " << avg.r << ", " << avg.g << ", " << avg.b << endl;
+        */
 
         // Check if avg is within the clicked color
         if (isPointWithinDesiredRange(avg, desired_color, radius)){
@@ -197,57 +230,31 @@ void CloudSegmenter:: segmentation(){
 
     cout << "Clusters found: " << cloud_ptrs.size() << endl;
     object_poses = vector<geometry_msgs::Pose>();
-    CloudPtrBoxMap cloud_boxes;
-
+    vector<OrientedBoundingBox> OBBs;
     for (int i = 0; i < cloud_ptrs.size(); i++){
-        OrientedBoundingBox OBB = getOBBForCloud(cloud_ptrs[i]);
-        cloud_boxes.insert(CloudPtrBoxPair(cloud_ptrs[i], OBB));
+        OBBs.push_back(getOBBForCloud(cloud_ptrs[i]));
+        cout << "OBB position: " << OBBs.back().get_position() << endl;
+        OBBs.back().set_sides( object_side, object_side, object_side);
+        cloud_boxes.insert(CloudPtrBoxPair(cloud_ptrs[i], OBBs.back()));
     }
 
     //Combine poses with intersecting bounding boxes
-    bool collides = true;
-    while(collides){
-        collides = false;
-        for (int i = 0; i < cloud_ptrs.size(); i++){
-            for (int j = 0; j < cloud_ptrs.size(); j++){
-                if (cloud_ptrs[i] == cloud_ptrs[j]){
-                    continue;
-                }
-                if (cloud_boxes[cloud_ptrs[i]].collides_with(cloud_boxes[cloud_ptrs[j]]) ){
-                    collides=true;
-                    //cloud_ptrs[i] = PointColorCloud::Ptr( *cloud_ptrs[i] + *cloud_ptrs[j]));
-                    PointColorCloud newcloud = *cloud_ptrs[i] + *cloud_ptrs[j];
-                    CloudPtrBoxMap::iterator it = cloud_boxes.find(cloud_ptrs[j]);
-                    cloud_boxes.erase(it);
-                    //Really hoping this doesn't delete the contents of cloud_ptrs[j]
-                    cloud_ptrs.erase(cloud_ptrs.begin()+j);
-                    it = cloud_boxes.find(cloud_ptrs[i]);
-                    cloud_boxes.erase(it);
-                    cloud_ptrs.erase(cloud_ptrs.begin()+i);
-
-                    //push_back new box
-
-                    cloud_ptrs.push_back(newcloud.makeShared());
-                    cloud_boxes[cloud_ptrs.back()] = getOBBForCloud(cloud_ptrs.back());
-                    break;
-                }
-            }
-            if(collides) break;
-        }
-    }
+    mergeCollidingBoxes();
 
     //For each OBB, extract the pose and make a ROS msg
 
-    for(int i = 0; i < cloud_ptrs.size(); i++ ){
-        pcl::PointXYZRGB position_OBB;
-        position_OBB = cloud_boxes[cloud_ptrs[i]].get_position_XYZ();
-        Eigen::Matrix3f rotational_matrix_OBB;
-        rotational_matrix_OBB = cloud_boxes[cloud_ptrs[i]].get_rotational_matrix();
+    for(CloudPtrBoxMap::iterator it = cloud_boxes.begin(); it != cloud_boxes.end(); it++){
+    //for(int i = 0; i < cloud_ptrs.size(); i++ ){
+    
+        OrientedBoundingBox box = (OrientedBoundingBox) it->second;
+        //OrientedBoundingBox box = cloud_boxes[cloud_ptrs[i]];
+        Eigen::Vector3f position_OBB = box.get_position();
+        Eigen::Matrix3f rotational_matrix_OBB = box.get_rotational_matrix();
         
         geometry_msgs::Point position;
-        position.x = position_OBB.x;
-        position.y = position_OBB.y;
-        position.z = position_OBB.z;
+        position.x = position_OBB[0];
+        position.y = position_OBB[1];
+        position.z = position_OBB[2];
 
         //Now dat orientation
         Eigen::Quaternionf q(rotational_matrix_OBB);
