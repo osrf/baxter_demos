@@ -16,9 +16,8 @@ from geometry_msgs.msg import Pose, PoseArray
 object_height = 0.06
 
 class DepthCaller:
-    def __init__(self, limb, iksvc):
+    def __init__(self, limb):
         self.done = False
-        self.iksvc = iksvc
         self.limb = limb
 
         self.depth_handler = rospy.Subscriber("object_tracker/"+limb+"/goal_poses", PoseArray, self.depth_callback)
@@ -26,15 +25,26 @@ class DepthCaller:
     def depth_callback(self, data):
         print "Getting object poses"
         self.object_poses = []
+        self.object_pose_msgs = []
         for pose in data.poses:
             p = [pose.position.x, pose.position.y, pose.position.z]+[pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]
             self.object_poses.append(p)
+            self.object_pose_msgs.append(pose)
         #print p
 
         self.done = True
         print "unregistering"
         self.depth_handler.unregister()
 
+def incrementPoseZ(pose, inc):
+    pos = numpy.array(pose[0:3])
+    pos += numpy.array((0, 0, inc))
+    pose = numpy.concatenate( (pos, pose[3:7]) )
+    return pose.tolist()
+
+def incrementPoseMsgZ(pose, inc):
+    pose.position.z += inc
+    return pose
 
 def main():
     arg_fmt = argparse.RawDescriptionHelpFormatter
@@ -82,12 +92,6 @@ def main():
     # Subscribe to object_finder and start visual servoing/grasping
     vc = VisualCommand(iksvc, limb)
     vc.subscribe()
-
-    def incrementPoseZ(pose, inc):
-        pos = numpy.array(pose[0:3])
-        pos += numpy.array((0, 0, inc))
-        pose = numpy.concatenate( (pos, pose[3:7]) )
-        return pose.tolist()
 
     # The stack pose is the pose of the smallest object with a z-offset
     # accounting for the height of the object (this assumption makes

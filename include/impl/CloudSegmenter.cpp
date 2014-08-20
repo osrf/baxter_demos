@@ -43,12 +43,16 @@ CloudSegmenter::CloudSegmenter() : indices( new vector<int>()) {
 
     has_desired_color = false;
     has_cloud = false;
-    sub = n.subscribe("/camera/depth_registered/points", 500,
-                                      &CloudSegmenter::callback, this);
+    cloud_sub = n.subscribe("/camera/depth_registered/points", 500,
+                                      &CloudSegmenter::points_callback, this);
+    goal_sub = n.subscribe("object_finder/next_goal_pose", 100,
+                           &CloudSegmenter::goal_callback, this);
 
     //TODO: add args for topic name
     pose_pub = n.advertise<geometry_msgs::PoseArray>(
                         "/object_tracker/right/goal_poses", 1000);
+
+    cloud_pub = n.advertise<sensor_msgs::PointCloud2>("/modified_points", 1000);
 }
 
 //soon to be deprecated
@@ -162,9 +166,11 @@ void CloudSegmenter:: segmentation(){
     if (!has_desired_color){
         return;
     }
-
+    cout << "Starting segmentation" << endl;
     /* Segmentation code from:
        http://pointclouds.org/documentation/tutorials/region_growing_rgb_segmentation.php*/
+
+    //Segmentation is a major bottleneck
     pcl::search::Search <pcl::PointXYZRGB>::Ptr tree =
                         boost::shared_ptr<pcl::search::Search
                         <pcl::PointXYZRGB> >
@@ -191,35 +197,22 @@ void CloudSegmenter:: segmentation(){
         pcl::PointIndices cluster = clusters[i];
 
         // Get a representative color in the cluster
-        int n = cluster.indices.size();
-        float r = 0; float g = 0; float b = 0;
-        // TODO: this is a major bottleneck. improve performance
-        for (int j = 0; j < n; j++){
-            pcl::PointRGB color = getCloudColorAt(cluster.indices[j]);
-            r += (float) color.r; //float typecasts suck
-            g += (float) color.g;
-            b += (float) color.b;
-        }
-        r /= n; g /= n; b /= n;
-        cout << "Average color: " << r << ", " << g << ", " << b << endl;
-        pcl::PointRGB avg((unsigned char) b, (unsigned char) g, (unsigned char) r);
-        /*int n = cluster.indices.size();
+        const int n = cluster.indices.size();
+        const int sample_inc = n/sample_size;
+            
         pcl::CentroidPoint<pcl::PointXYZRGB> rgb_centroid;
-        for (int j = 0; j < n; j++){
+        for (int j = 0; j < n; j+=sample_inc){
             rgb_centroid.add(cloud->at(cluster.indices[j]));
             
         }
         pcl::PointXYZRGB avg_xyz;
         rgb_centroid.get(avg_xyz);
-        //TODO: test that colors get averaged
         pcl::PointRGB avg(avg_xyz.b, avg_xyz.g, avg_xyz.r);
 
-        cout << "Average color: " << avg.r << ", " << avg.g << ", " << avg.b << endl;
-        */
+        cout << "Average color: " << (int) avg.r << ", " << (int) avg.g << ", " << (int) avg.b << endl;
 
         // Check if avg is within the clicked color
         if (isPointWithinDesiredRange(avg, desired_color, radius)){
-            //blob_clusters.push_back(clusters[i]);
             PointColorCloud cloud_subset = PointColorCloud(*cloud, cluster.indices);
             PointColorCloud::Ptr cloud_ptr = cloud_subset.makeShared();
 
@@ -233,7 +226,7 @@ void CloudSegmenter:: segmentation(){
     vector<OrientedBoundingBox> OBBs;
     for (int i = 0; i < cloud_ptrs.size(); i++){
         OBBs.push_back(getOBBForCloud(cloud_ptrs[i]));
-        cout << "OBB position: " << OBBs.back().get_position() << endl;
+        //cout << "OBB position: " << OBBs.back().get_position() << endl;
         OBBs.back().set_sides( object_side, object_side, object_side);
         cloud_boxes.insert(CloudPtrBoxPair(cloud_ptrs[i], OBBs.back()));
     }
@@ -244,10 +237,7 @@ void CloudSegmenter:: segmentation(){
     //For each OBB, extract the pose and make a ROS msg
 
     for(CloudPtrBoxMap::iterator it = cloud_boxes.begin(); it != cloud_boxes.end(); it++){
-    //for(int i = 0; i < cloud_ptrs.size(); i++ ){
-    
         OrientedBoundingBox box = (OrientedBoundingBox) it->second;
-        //OrientedBoundingBox box = cloud_boxes[cloud_ptrs[i]];
         Eigen::Vector3f position_OBB = box.get_position();
         Eigen::Matrix3f rotational_matrix_OBB = box.get_rotational_matrix();
         
@@ -256,7 +246,6 @@ void CloudSegmenter:: segmentation(){
         position.y = position_OBB[1];
         position.z = position_OBB[2];
 
-        //Now dat orientation
         Eigen::Quaternionf q(rotational_matrix_OBB);
 
         geometry_msgs::Quaternion orientation;
@@ -267,17 +256,17 @@ void CloudSegmenter:: segmentation(){
 
         geometry_msgs::PoseStamped pose_in;
         pose_in.pose.position = position; pose_in.pose.orientation = orientation;
-        cout << "Pose in: " << pose_in.pose << endl;
+        //cout << "Pose in: " << pose_in.pose << endl;
         pose_in.header.frame_id = frame_id;
         geometry_msgs::PoseStamped pose_out;
         pose_in.header.stamp = ros::Time::now();
         tf_listener.transformPose("/base", pose_in, pose_out);
-        cout << "Pose out: " << pose_out.pose << endl;
+        //cout << "Pose out: " << pose_out.pose << endl;
         object_poses.push_back(pose_out.pose);
     }
 }
 
-void CloudSegmenter:: callback(const sensor_msgs::PointCloud2::ConstPtr& msg){
+void CloudSegmenter::points_callback(const sensor_msgs::PointCloud2::ConstPtr& msg){
     frame_id = msg->header.frame_id;
     // Members: float x, y, z; uint32_t rgba
     pcl::PointCloud <pcl::PointXYZRGB>::Ptr new_cloud
@@ -297,6 +286,55 @@ void CloudSegmenter:: callback(const sensor_msgs::PointCloud2::ConstPtr& msg){
 
     cloud = new_cloud;
     has_cloud = true;
+}
+
+//just a wrapper to make things more readable
+void addComparison(pcl::ConditionAnd<pcl::PointXYZRGB>::Ptr range_cond, const char* channel, pcl::ComparisonOps::CompareOp op, float value){
+    //this gives a warning!
+    range_cond->addComparison(pcl::FieldComparison<pcl::PointXYZRGB>::ConstPtr( new pcl::FieldComparison<pcl::PointXYZRGB>(channel, op, value)) );
+}
+
+void CloudSegmenter::goal_callback(const geometry_msgs::Pose msg){
+    PointColorCloud::Ptr transform_cloud(new PointColorCloud);
+
+    //Assume the object has object_height dimensions
+    //Remove the part of the pointcloud containing the goal object (with a bit of padding)
+    const float side = object_side + exclusion_padding;
+    
+    //Transform to the object frame (so that the center of the object is the origin)
+    Eigen::Vector3f position( msg.position.x, msg.position.y, msg.position.y ); //???
+    Eigen::Quaternionf orientation(msg.orientation.w, msg.orientation.x, msg.orientation.y, msg.orientation.z);
+    Eigen::Isometry3f object_camera_tf; 
+    object_camera_tf.translate(position);
+    object_camera_tf.rotate(orientation);
+
+    Eigen::Matrix4f object_camera = object_camera_tf.matrix();
+    Eigen::Matrix4f camera_object = object_camera.inverse();
+    pcl::transformPointCloud(*cloud, *transform_cloud, camera_object);
+
+    //apply condition to exclude the cube
+    //From http://pointclouds.org/documentation/tutorials/conditional_removal.php
+    pcl::ConditionAnd<pcl::PointXYZRGB>::Ptr range_cond(new pcl::ConditionAnd<pcl::PointXYZRGB>);
+    addComparison(range_cond, "x", pcl::ComparisonOps::GT, -side/2);
+    addComparison(range_cond, "x", pcl::ComparisonOps::LT, side/2);
+    addComparison(range_cond, "y", pcl::ComparisonOps::GT, -side/2);
+    addComparison(range_cond, "y", pcl::ComparisonOps::LT, side/2);
+    addComparison(range_cond, "z", pcl::ComparisonOps::GT, -side/2);
+    addComparison(range_cond, "z", pcl::ComparisonOps::LT, side/2);
+
+    pcl::ConditionalRemoval<pcl::PointXYZRGB> condrem(range_cond);
+    condrem.setInputCloud(transform_cloud);
+    condrem.filter(*transform_cloud);
+
+    //transform back
+    pcl::transformPointCloud(*transform_cloud, *transform_cloud, object_camera);
+
+    //publish it to topic /modified_points
+    sensor_msgs::PointCloud2 cloud_msg;
+    pcl::toROSMsg(*transform_cloud, cloud_msg);
+
+    cloud_pub.publish(cloud_msg);
+    
 }
 
 #endif

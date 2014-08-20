@@ -19,6 +19,8 @@
 #include <pcl/point_types_conversion.h>
 #include <pcl/recognition/color_gradient_dot_modality.h>
 #include <pcl/common/centroid.h>
+#include <pcl/common/transforms.h>
+#include <pcl/filters/conditional_removal.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/segmentation/region_growing_rgb.h>
 #include <pcl/search/search.h>
@@ -39,8 +41,11 @@ typedef pcl::PointCloud<pcl::PointXYZRGB> PointColorCloud;
 typedef pair<PointColorCloud::Ptr, OrientedBoundingBox> CloudPtrBoxPair;
 typedef map<PointColorCloud::Ptr, OrientedBoundingBox> CloudPtrBoxMap;
 
+//TODO: yamlization
 const string win_name = "Cloud viewer";
 const float object_side = 0.06; //cheating
+const float exclusion_padding = 0.01;
+const int sample_size = 50;
 
 class CloudSegmenter {
 private:
@@ -60,8 +65,10 @@ private:
     
     pcl::IndicesPtr indices;
     ros::NodeHandle n;
-    ros::Subscriber sub;
+    ros::Subscriber cloud_sub;
     ros::Publisher pose_pub;
+    ros::Subscriber goal_sub;
+    ros::Publisher cloud_pub;
 
     pcl::RegionGrowingRGB<pcl::PointXYZRGB> reg;
     pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud;
@@ -74,6 +81,7 @@ private:
 
 
     void mergeCollidingBoxes();
+    //static void addComparison(pcl::ConditionAnd<pcl::PointXYZRGB>::Ptr range_cond, const char* channel, pcl::ComparisonOps::CompareOp op, float value);
 
 public:
 
@@ -88,7 +96,6 @@ public:
                                const pcl::PointRGB desired_pt, int radius);
 
     CloudSegmenter();
-    //CloudSegmenter();
     void publish_poses();
     //remember to shift-click!
     void getClickedPoint(const pcl::visualization::PointPickingEvent& event,
@@ -99,7 +106,8 @@ public:
     pcl::PointRGB getCloudColorAt(int n);
    
     void segmentation();
-    void callback(const sensor_msgs::PointCloud2::ConstPtr& msg);
+    void points_callback(const sensor_msgs::PointCloud2::ConstPtr& msg);
+    void goal_callback(const geometry_msgs::Pose msg);
 };
 
 #endif

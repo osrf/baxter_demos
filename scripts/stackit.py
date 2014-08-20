@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Use MoveIt to plan a stacking of the object
+# TODO: make adaptive to the poses
 
 import argparse
 import sys
@@ -7,11 +7,12 @@ import copy
 import rospy
 import moveit_commander
 import moveit_msgs.msg
+from moveit_msgs.msg import CollisionObject
 import geometry_msgs.msg
 import baxter_interface
 from baxter_interface import CHECK_VERSION
 import yaml
-from super_stacker import DepthCaller, incrementPoseZ
+from super_stacker import DepthCaller, incrementPoseMsgZ
 
 
 config_folder = rospy.get_param('object_tracker/config_folder')
@@ -41,17 +42,18 @@ def main():
     limb = args.limb
 
     moveit_commander.roscpp_initialize(sys.argv)
-    rospy.init_node('stackit', anonymous=True)
+    rospy.init_node('stackit')
 
     rate = rospy.Rate(params['rate'])
     # Get the goal poses
     dc = DepthCaller(limb)
     while (not dc.done) and (not rospy.is_shutdown()):
         rate.sleep()
-
+    
     robot = moveit_commander.RobotCommander()
     scene = moveit_commander.PlanningSceneInterface()
     group = moveit_commander.MoveGroupCommander(limb+"_arm")
+
 
     if visualize:
         display_trajectory_publisher = rospy.Publisher(
@@ -74,13 +76,40 @@ def main():
         gripper_if.calibrate()
 
 
-    stack_pose = dc.object_poses[-1]
-    stack_pose = incrementPoseZ(stack_pose, dc.object_height)
-    dc.object_poses.pop(len(dc.object_poses)-1)
+    collision_object_publisher = rospy.Publisher('collision_object', CollisionObject)
+    # Add all the blocks as collision objects
+    i = 0
+    collision_objects = []
+    for pose in dc.object_pose_msgs:
+        print "Publishing object pose to scene monitor"
+        # Create a CollisionObject message and publish it once
+        co = CollisionObject()
+        co.id="box_pose_"+str(i)
+        co.header.frame_id="base"; #?
+        #co.operation = co.ADD
+        co.operation = co.REMOVE
+        co.primitive_poses = []
+        co.primitive_poses.append(pose)
+        collision_objects.append(co) 
+        collision_object_publisher.publish(co)
+        i+=1
 
-    for pose in dc.object_poses[:len(dc.object_poses)]:
+    print "Creating stack poses"
+    stack_pose = dc.object_pose_msgs[-1]
+    stack_pose = incrementPoseMsgZ(stack_pose, params['object_height'])
+    dc.object_pose_msgs.pop(len(dc.object_pose_msgs)-1)
+    i = 0
+    for pose in dc.object_pose_msgs:
+        print "setting target to pose"
         # Move to the next block
         group.set_pose_target(pose)
+
+        # Remove object from collision matrix
+        
+        co = collision_objects[i]
+        co.operation = co.REMOVE
+        collision_object_publisher.publish(co)
+
         plan = group.plan()
         if visualize:
             display_trajectory = moveit_msgs.msg.DisplayTrajectory()
@@ -103,7 +132,8 @@ def main():
         gripper_if.open(block=True)
         
         # Get the next stack pose
-        stack_pose = incrementPoseZ(pose, dc.object_height)
+        stack_pose = incrementPoseMsgZ(pose, params['object_height'])
+        i+=1
 
 if __name__ == "__main__":
     main()
