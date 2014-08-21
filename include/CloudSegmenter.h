@@ -4,6 +4,7 @@
 #include <iostream>
 #include <exception>
 #include <cmath>
+#include <cstdlib>
 
 #include "ros/ros.h"
 #include "tf/transform_listener.h"
@@ -41,11 +42,7 @@ typedef pcl::PointCloud<pcl::PointXYZRGB> PointColorCloud;
 typedef pair<PointColorCloud::Ptr, OrientedBoundingBox> CloudPtrBoxPair;
 typedef map<PointColorCloud::Ptr, OrientedBoundingBox> CloudPtrBoxMap;
 
-//TODO: yamlization
-const string win_name = "Cloud viewer";
-const float object_side = 0.06; //cheating
-const float exclusion_padding = 0.01;
-const int sample_size = 50;
+/*TODO: protect against segfaults on empty segmentation, make display copy of cloud because PCL viewer seems to destroy it ...?*/
 
 class CloudSegmenter {
 private:
@@ -59,6 +56,11 @@ private:
 
     bool has_desired_color;
     bool has_cloud;
+    bool segmented;
+
+    float object_side;
+    float exclusion_padding;
+    int  sample_size;
 
     string frame_id;
     pcl::PointRGB desired_color;
@@ -72,6 +74,7 @@ private:
 
     pcl::RegionGrowingRGB<pcl::PointXYZRGB> reg;
     pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud;
+    pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr display_cloud;
     pcl::PointCloud <pcl::PointXYZRGB>::Ptr colored_cloud;
 
     vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> cloud_ptrs;
@@ -79,6 +82,7 @@ private:
     vector<geometry_msgs::Pose> object_poses;
     tf::TransformListener tf_listener;
 
+    sensor_msgs::PointCloud2 cloud_msg;
 
     void mergeCollidingBoxes();
     //static void addComparison(pcl::ConditionAnd<pcl::PointXYZRGB>::Ptr range_cond, const char* channel, pcl::ComparisonOps::CompareOp op, float value);
@@ -87,21 +91,24 @@ public:
 
     //pcl::visualization::CloudViewer cloud_viewer;
     pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr getCloudPtr();
+    pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr getDisplayCloudPtr();
     pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr getClusteredCloudPtr();
     
     bool hasCloud();
-    
     bool hasColor();
+    bool wasSegmented();
+
+    Eigen::Vector3i getDesiredColor();
+
     static bool isPointWithinDesiredRange(const pcl::PointRGB input_pt,
                                const pcl::PointRGB desired_pt, int radius);
 
     CloudSegmenter();
     void publish_poses();
+    void mouseoverCallback(const pcl::visualization::MouseEvent event, void* args);
     //remember to shift-click!
     void getClickedPoint(const pcl::visualization::PointPickingEvent& event,
                          void* args);
-    //void renderCloud();
-    //void renderClusters();
     pcl::PointRGB getCloudColorAt(int x, int y);
     pcl::PointRGB getCloudColorAt(int n);
    

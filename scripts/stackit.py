@@ -48,12 +48,13 @@ def main():
     # Get the goal poses
     dc = DepthCaller(limb)
     while (not dc.done) and (not rospy.is_shutdown()):
+        print "No poses found yet"
         rate.sleep()
     
     robot = moveit_commander.RobotCommander()
     scene = moveit_commander.PlanningSceneInterface()
     group = moveit_commander.MoveGroupCommander(limb+"_arm")
-
+    group.allow_replanning(True)
 
     if visualize:
         display_trajectory_publisher = rospy.Publisher(
@@ -76,39 +77,19 @@ def main():
         gripper_if.calibrate()
 
 
-    collision_object_publisher = rospy.Publisher('collision_object', CollisionObject)
-    # Add all the blocks as collision objects
-    i = 0
-    collision_objects = []
-    for pose in dc.object_pose_msgs:
-        print "Publishing object pose to scene monitor"
-        # Create a CollisionObject message and publish it once
-        co = CollisionObject()
-        co.id="box_pose_"+str(i)
-        co.header.frame_id="base"; #?
-        #co.operation = co.ADD
-        co.operation = co.REMOVE
-        co.primitive_poses = []
-        co.primitive_poses.append(pose)
-        collision_objects.append(co) 
-        collision_object_publisher.publish(co)
-        i+=1
-
-    print "Creating stack poses"
-    stack_pose = dc.object_pose_msgs[-1]
+    goal_pose_publisher = rospy.Publisher('object_finder/next_goal_pose', geometry_msgs.msg.Pose)
+    
+    stack_pose = dc.object_pose_msgs[len(dc.object_pose_msgs)-1]
     stack_pose = incrementPoseMsgZ(stack_pose, params['object_height'])
     dc.object_pose_msgs.pop(len(dc.object_pose_msgs)-1)
     i = 0
     for pose in dc.object_pose_msgs:
         print "setting target to pose"
         # Move to the next block
+        goal_pose_publisher.publish(pose)
         group.set_pose_target(pose)
 
         # Remove object from collision matrix
-        
-        co = collision_objects[i]
-        co.operation = co.REMOVE
-        collision_object_publisher.publish(co)
 
         plan = group.plan()
         if visualize:
@@ -121,15 +102,19 @@ def main():
 
         group.go(wait=True)
         group.clear_pose_targets()
-        gripper_if.close(block=True)
+
+        if len(plan.joint_trajectory.points) > 0:
+            gripper_if.close(block=True)
 
         # Move to the stacking position
         group.set_pose_target(stack_pose)
         plan = group.plan()
+
         group.go(wait=True)
         group.clear_pose_targets()
 
-        gripper_if.open(block=True)
+        if len(plan.joint_trajectory.points) > 0:
+            gripper_if.open(block=True)
         
         # Get the next stack pose
         stack_pose = incrementPoseMsgZ(pose, params['object_height'])

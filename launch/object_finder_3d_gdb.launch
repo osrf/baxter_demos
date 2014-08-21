@@ -2,5 +2,5 @@
     <node pkg="baxter_demos" name="object_finder_3d" type="object_finder_3d"
         required="true" launch-prefix="gdb -ex run --args" output="screen">
     </node>
-    <rosparam param="object_finder_params" command="load" file="$(find baxter_demos)/config/object_finder_3d.yaml"/>
+    <rosparam command="load" file="$(find baxter_demos)/config/object_finder_3d.yaml"/>
 </launch>

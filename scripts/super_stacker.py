@@ -32,9 +32,11 @@ class DepthCaller:
             self.object_pose_msgs.append(pose)
         #print p
 
-        self.done = True
-        print "unregistering"
-        self.depth_handler.unregister()
+        if len(data.poses) > 0:
+            self.done = True
+            # Hmm
+            print "unregistering"
+            self.depth_handler.unregister()
 
 def incrementPoseZ(pose, inc):
     pos = numpy.array(pose[0:3])

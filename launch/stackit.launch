@@ -3,21 +3,19 @@
 
   <arg name="limb"     default="right"/>
   <arg name="method"   default="color"/>
-
-  <node pkg="baxter_interface" name="joint_trajectory_action_server" type="joint_trajectory_action_server.py" />
-  <include file="$(find baxter_moveit_config)/launch/demo_baxter.launch"/>
-
   <param name="robot_description" textfile="$(find baxter_description)/urdf/baxter.urdf"/>
 
   <param name="object_tracker/config_folder" value="$(find baxter_demos)/config/"/>
+  <rosparam command="load" file="$(find baxter_demos)/config/servo_to_object.yaml" />
+  <rosparam command="load" file="$(find baxter_demos)/config/object_finder_3d.yaml" />
+
+  <!--include file="$(find baxter_moveit_config)/launch/demo_baxter.launch"/-->
+  <!--node pkg="baxter_interface" name="joint_trajectory_action_server" type="joint_trajectory_action_server.py" /-->
 
   <node pkg="baxter_demos" name="object_finder_3d" type="object_finder_3d" required="true">
   </node>
   
   <node pkg="baxter_demos" name="servo_to_object" type="stackit.py"
-args="--limb $(arg limb) --visualize true" required="true">
-    </node>
-
-
+args="--limb $(arg limb) --visualize true" required="true"/>
 
 </launch>

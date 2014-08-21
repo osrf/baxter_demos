@@ -5,3 +5,6 @@ distance_threshold: 10
 point_color_threshold: 6
 region_color_threshold: 5
 min_cluster_size: 750
+
+exclusion_padding: 0.03
+sample_size: 50

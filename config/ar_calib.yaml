@@ -1,0 +1,7 @@
+markernum: 2
+# 0.06991+0.01036+0.0225
+measured_translation: [0.10277, -0.0569, -0.0055]
+forearm_marker_rot: [-1, 0, 0, 0, 0, -1, 0, -1, 0]
+
+squaredims: [0.07, 0.04, 0.02]
+

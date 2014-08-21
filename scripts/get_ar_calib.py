@@ -12,6 +12,10 @@ import visualization_msgs.msg
 
 # TODO: add averaging/filtering, auto-add to param server or urdf or file
 
+config_folder = rospy.get_param('object_tracker/config_folder')
+with open(config_folder+'ar_calib.yaml', 'r') as f:
+    params = yaml.load(f)
+
 class markerSubscriber():
     def __init__(self, markernum=2):
         self.sub = rospy.Subscriber("/visualization_marker", Marker, self.callback)
@@ -56,9 +60,13 @@ def create_marker(ns, id_num, shape_type, pose, color, scale):
     marker.scale.x, marker.scale.y, marker.scale.z = scale
     return marker
 
-markernum = '2'
-measured_translation = [0.06991+0.01036+0.0225, -0.0569, -0.0055]
-forearm_marker_rot = numpy.array( [[-1, 0, 0], [0, 0, -1], [0, -1, 0]] )
+#markernum = '2'
+markernum = params['markernum']
+measured_translation = params['measured_translation']
+forearm_marker_rot = numpy.array(params['forearm_marker_rot']).reshape((3,3))
+squaredims = tuple(params['squaredims'])
+#measured_translation = [0.06991+0.01036+0.0225, -0.0569, -0.0055]
+#forearm_marker_rot = numpy.array( [[-1, 0, 0], [0, 0, -1], [0, -1, 0]] )
 
 rospy.init_node("get_ar_calib")
 
@@ -100,9 +108,10 @@ while not rospy.is_shutdown():
     trans, rot = getTfFromMatrix(numpy.linalg.inv(base_camera))
 
     tf_broadcaster.sendTransform(trans, rot, rospy.Time.now(), "/camera_link", "/base")
+
+
     camera_pose = getPoseFromMatrix(base_camera)
     
-    squaredims = (0.07, 0.04, 0.02)
     marker_msg = create_marker("marker_pose", 44, Marker.CUBE, marker_pose, (0, 255, 0), squaredims )
 
     camera_msg = create_marker("camera_pose", 1337, Marker.ARROW, camera_pose, (0, 0, 255), (0.2, 0.01, 0.01))
@@ -114,4 +123,13 @@ while not rospy.is_shutdown():
     marker_pub.publish(msg)
     rate.sleep()
 
-
+print "Writing transform to yaml file"
+# Write to yaml file
+f = open(config_folder+"/base_camera_tf.yaml", 'w')
+lines = ['base_camera_trans: ', 'base_camera_rot: ']
+for elem in trans:
+    lines[0] += str(elem) + ', '
+for elem in rot:
+    lines[1] += str(elem) + ', '
+f.writelines(lines)
+f.close()

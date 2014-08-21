@@ -4,4 +4,7 @@
 
   <node pkg="tf" type="static_transform_publisher" name="base_cam_broadcaster" args="0.143, 0.073, 0.482 -0.012, 0.504, 0.004, 0.863 base camera_link 100" />
 
+  <node pkg="tf" type="static_transform_publisher" name="cambox_joint_broadcaster" args="0.131501, 0.005998, 0.520422, 0, 0, 0, 1 torso camera_box 100" />
+
+
 </launch>
