@@ -17,6 +17,7 @@ find_package(catkin REQUIRED COMPONENTS
     baxter_interface
     std_msgs
     geometry_msgs
+    moveit_msgs
     message_generation
     pcl_conversions
     tf
@@ -28,16 +29,18 @@ add_message_files(
     FILES
     BlobInfo.msg
     BlobInfoArray.msg
+    CollisionObjectArray.msg
 )
 
 generate_messages(
     DEPENDENCIES
     std_msgs
     geometry_msgs
+    moveit_msgs
 )
 
 catkin_package(
-    CATKIN_DEPENDS message_runtime roscpp cv_bridge sensor_msgs pcl_conversions tf
+    CATKIN_DEPENDS message_runtime roscpp cv_bridge sensor_msgs moveit_msgs pcl_conversions tf
     DEPENDS OpenCV2
 )
 

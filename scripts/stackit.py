@@ -44,7 +44,7 @@ def main():
     moveit_commander.roscpp_initialize(sys.argv)
     rospy.init_node('stackit')
 
-    rate = rospy.Rate(params['rate'])
+    rate = rospy.Rate(1)
     # Get the goal poses
     dc = DepthCaller(limb)
     while (not dc.done) and (not rospy.is_shutdown()):
@@ -87,12 +87,16 @@ def main():
         print "setting target to pose"
         # Move to the next block
         goal_pose_publisher.publish(pose)
+        group.clear_pose_targets()
         group.set_pose_target(pose)
 
         # Remove object from collision matrix
 
         plan = group.plan()
-        if visualize:
+
+        # is there a better way of checking this?
+        plan_found = len(plan.joint_trajectory.points) > 0
+        if visualize and plan_found:
             display_trajectory = moveit_msgs.msg.DisplayTrajectory()
             display_trajectory.trajectory_start = robot.get_current_state()
             display_trajectory.trajectory.append(plan)
@@ -101,19 +105,19 @@ def main():
             rospy.sleep(5)
 
         group.go(wait=True)
-        group.clear_pose_targets()
 
-        if len(plan.joint_trajectory.points) > 0:
+        if plan_found:
             gripper_if.close(block=True)
 
         # Move to the stacking position
+        group.clear_pose_targets()
         group.set_pose_target(stack_pose)
         plan = group.plan()
+        plan_found = len(plan.joint_trajectory.points) > 0
 
         group.go(wait=True)
-        group.clear_pose_targets()
 
-        if len(plan.joint_trajectory.points) > 0:
+        if plan_found:
             gripper_if.open(block=True)
         
         # Get the next stack pose

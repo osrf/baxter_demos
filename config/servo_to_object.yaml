@@ -21,9 +21,8 @@ object_height: 0.06
 gripper_min: 0.289
 gripper_max: 0.75
 
-rate: 100
+rate: 500
 button_rate: 0.5
-
 
 threshold: 10
 ir_thresh: 0.15

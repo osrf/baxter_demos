@@ -3,6 +3,7 @@
 import rospy
 import tf
 import numpy
+import yaml
 from math import pi
 
 from geometry_msgs.msg import Pose, Point, Quaternion
@@ -101,15 +102,13 @@ while not rospy.is_shutdown():
     marker_pose = getPoseFromMatrix(base_marker)
 
     # marker to camera
-    marker_camera = lookupTransform(tf_listener, '/camera_link', '/ar_marker_'+markernum)
+    marker_camera = lookupTransform(tf_listener, '/camera_link', '/ar_marker_'+str(markernum))
 
     # base to camera = marker to camera * base to marker
     base_camera = marker_camera.dot(base_marker)
     trans, rot = getTfFromMatrix(numpy.linalg.inv(base_camera))
 
     tf_broadcaster.sendTransform(trans, rot, rospy.Time.now(), "/camera_link", "/base")
-
-
     camera_pose = getPoseFromMatrix(base_camera)
     
     marker_msg = create_marker("marker_pose", 44, Marker.CUBE, marker_pose, (0, 255, 0), squaredims )
@@ -122,6 +121,7 @@ while not rospy.is_shutdown():
 
     marker_pub.publish(msg)
     rate.sleep()
+
 
 print "Writing transform to yaml file"
 # Write to yaml file

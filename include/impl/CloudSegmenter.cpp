@@ -63,44 +63,178 @@ CloudSegmenter::CloudSegmenter() : indices( new vector<int>()) {
 
     cloud_sub = n.subscribe("/camera/depth_registered/points", 100,
                                       &CloudSegmenter::points_callback, this);
-    goal_sub = n.subscribe("object_finder/next_goal_pose", 100,
-                           &CloudSegmenter::goal_callback, this);
+    //goal_sub = n.subscribe("object_finder/next_goal_pose", 100,
+    //                       &CloudSegmenter::goal_callback, this);
 
     //TODO: add args for topic name
-    pose_pub = n.advertise<geometry_msgs::PoseArray>(
-                        "/object_tracker/right/goal_poses", 1000);
+    object_pub = n.advertise<CollisionObjectArray>(
+                        "/object_tracker/collision_objects", 100);
 
     cloud_pub = n.advertise<sensor_msgs::PointCloud2>("/modified_points", 200);
+
+    object_sequence = 0;
 }
 
-//soon to be deprecated
+Eigen::Vector3f positionToVector(geometry_msgs::Point p){
+    return Eigen::Vector3f(p.x, p.y, p.z);
+}
+
+//Compare goal poses: by greater magnitude
+
+class pose_compare{
+    public:
+    bool operator()(geometry_msgs::Pose pose_a, geometry_msgs::Pose pose_b){
+
+        return positionToVector(pose_a.position).norm() <
+               positionToVector(pose_b.position).norm();
+    }
+};
+
+
+// Construct a vector of MoveIt CollisionObjects for the new poses that came in
+// Match the IDs of the old poses with the new ones and construct new poses if necessary
+void CloudSegmenter::match_prev_cur_poses(vector<geometry_msgs::Pose> cur_poses,
+                            vector<moveit_msgs::CollisionObject>& next_objs,
+                            vector<moveit_msgs::CollisionObject>& remove_objs ){
+
+
+    int prev_len = prev_objs.size();
+    int cur_len = cur_poses.size();
+    set<geometry_msgs::Pose, pose_compare> added_poses;
+
+    if (prev_len != 0){
+        //Map the ID of the CollisionObject from the previous frame to the best match pose
+        //from the current frame
+        IDPoseMap prev_to_cur_map; //Previous objects are mapped to their closest current pose
+        IDObjectMap id_to_obj_map;
+
+        for(int j = 0; j < prev_len; j++){
+            id_to_obj_map[prev_objs[j].id] = prev_objs[j];
+        }
+
+        for(int i = 0; i < cur_len; i++){
+            geometry_msgs::Pose cur_pose = cur_poses[i];
+            Eigen::Vector3f cur_point = positionToVector( cur_pose.position );
+            float min_d = 1000; //things probably won't get bigger than this?
+            //geometry_msgs::Pose argmin;
+            moveit_msgs::CollisionObject argmin;
+            for(int j = 0; j < prev_len; j++){
+                geometry_msgs::Pose prev_pose = prev_objs[j].primitive_poses[0];
+                Eigen::Vector3f prev_point = positionToVector( prev_pose.position );
+                float d = (prev_point - cur_point).norm();
+                if(d < min_d){
+                    min_d = d;
+                    argmin = prev_objs[j];
+                }
+            }
+
+            //Enforce uniqueness
+            string id = argmin.id;
+            IDPoseMap::iterator it = prev_to_cur_map.find( id ); 
+            if( it != prev_to_cur_map.end()){ //If argmin is already matched to a pose
+                geometry_msgs::Pose old_pose = prev_to_cur_map[id];
+                float old_min_d = ( positionToVector( old_pose.position ) - cur_point).norm();
+                if ( old_min_d < min_d ){
+                    //Don't add it to the map because the old match is better than this one
+                    continue;
+                }
+            }
+            prev_to_cur_map[id] = cur_pose;
+            added_poses.insert(cur_pose);
+        }
+        next_objs.clear();
+        remove_objs.clear();
+        for(IDPoseMap::iterator it = prev_to_cur_map.begin();
+                it != prev_to_cur_map.end(); it++ ){
+            geometry_msgs::Pose cur_pose = it->second;
+            string id = it->first;
+            moveit_msgs::CollisionObject cur_obj = id_to_obj_map[id];
+            cur_obj.primitive_poses[0] = cur_pose;
+            cur_obj.operation = moveit_msgs::CollisionObject::MOVE;
+            cur_obj.header.stamp = ros::Time::now();
+            next_objs.push_back(cur_obj);
+        }
+
+        //For all the poses that did not make it into the new scene, remove them
+        for(int i = 0; i < prev_objs.size(); i ++){
+            if(prev_to_cur_map.find(prev_objs[i].id) == prev_to_cur_map.end()){
+                moveit_msgs::CollisionObject remove_obj = prev_objs[i];
+                remove_obj.operation = moveit_msgs::CollisionObject::REMOVE;
+                remove_obj.header.stamp = ros::Time::now();
+                remove_objs.push_back(remove_obj);
+            }
+        }
+    }
+
+    // For all the current poses that were not matched with a previous pose, add a new CollisionObject
+
+    for(int j = 0; j < cur_poses.size(); j++){
+        if(added_poses.find(cur_poses[j]) == added_poses.end()){
+
+            moveit_msgs::CollisionObject new_obj; 
+            char id[16];
+            sprintf(id, "goal_block_%d", object_sequence);
+            new_obj.id=id;
+            shape_msgs::SolidPrimitive primitive;
+            primitive.type = primitive.BOX;
+            primitive.dimensions.resize(3);
+            primitive.dimensions[0] = object_side;
+            primitive.dimensions[1] = object_side;
+            primitive.dimensions[2] = object_side;
+            new_obj.primitives.push_back(primitive);
+            new_obj.primitive_poses.push_back(cur_poses[j]);
+            new_obj.operation = moveit_msgs::CollisionObject::ADD;
+
+            new_obj.header.frame_id = frame_id;
+            new_obj.header.stamp = ros::Time::now();
+
+            object_sequence++;
+
+            next_objs.push_back(new_obj);
+        }
+    }
+}
+
 void CloudSegmenter:: publish_poses(){
-    geometry_msgs::PoseArray msg;
-    msg.poses = object_poses;
-    pose_pub.publish(msg);
+    //geometry_msgs::PoseArray msg;
+    //msg.poses = cur_poses;
+    CollisionObjectArray msg;
+    msg.objects = cur_objs;
+    if(cur_objs.empty()){
+        cout << "Oops, no objects found!" << endl;
+    }
+    object_pub.publish(msg);
 
-    cloud_pub.publish(cloud_msg);
+    if(has_cloud){
+        cout << "publishing modified points" << endl;
+        cloud_msg.header.frame_id = frame_id;
+        cloud_pub.publish(cloud_msg);
+    }
 }
-
-/*
-void CloudSegmenter::mouseoverCallback(const pcl::visualization::MouseEvent event,
-                                       void* args){
-    //keep track of the point we moused over
-    int x = event.getX();
-    int y = event.getY();
-}*/
 
 //remember to shift-click!
 void CloudSegmenter:: getClickedPoint(
                 const pcl::visualization::PointPickingEvent& event,
                 void* args){
-    int n = event.getPointIndex();
+    /*int n = event.getPointIndex();
     if (n == -1){
         cout << "Got no point" << endl;
         return;
     }
 
-    desired_color = getCloudColorAt(n);
+    desired_color = getCloudColorAt((size_t) n);*/
+    
+    pcl::search::KdTree<pcl::PointXYZRGB> search;
+
+    search.setInputCloud (cloud);
+    pcl::PointXYZRGB picked_pt;
+    event.getPoint(picked_pt.x, picked_pt.y, picked_pt.z);
+
+    vector<float> distances (1);
+    vector<int> search_indices(1);
+    search.nearestKSearch (picked_pt, 1, search_indices, distances);
+    desired_color = getCloudColorAt( (size_t) search_indices[0]);
+
     cout << "Desired color: " << (int) desired_color.r << ", " <<
             (int) desired_color.g << ", " << (int) desired_color.b << endl;
     has_desired_color = true;
@@ -119,7 +253,8 @@ pcl::PointRGB CloudSegmenter:: getCloudColorAt(int x, int y){
     pcl::PointXYZRGB cur = cloud->at(x, y);
     return pcl::PointRGB(cur.b, cur.g, cur.r);
 }
-pcl::PointRGB CloudSegmenter:: getCloudColorAt(int n){
+
+pcl::PointRGB CloudSegmenter:: getCloudColorAt(size_t n){
     pcl::PointXYZRGB cur = cloud->at(n);
     return pcl::PointRGB(cur.b, cur.g, cur.r);
 }
@@ -211,6 +346,9 @@ void CloudSegmenter:: segmentation(){
 
     cloud_boxes.clear();
     // Select the correct color clouds from the segmentation
+    
+    PointColorCloud obstacle_points;
+
     for (int i = 0; i < clusters.size(); i++){
         pcl::PointIndices cluster = clusters[i];
 
@@ -231,14 +369,18 @@ void CloudSegmenter:: segmentation(){
                 ", " << (int) avg.b << endl;
 
         // Check if avg is within the clicked color
+        PointColorCloud cloud_subset = PointColorCloud(*cloud, cluster.indices);
+        PointColorCloud::Ptr cloud_ptr = cloud_subset.makeShared();
         if (isPointWithinDesiredRange(avg, desired_color, radius)){
-            PointColorCloud cloud_subset = PointColorCloud(*cloud, cluster.indices);
-            PointColorCloud::Ptr cloud_ptr = cloud_subset.makeShared();
-
             cloud_ptrs.push_back(cloud_ptr);
-            
+        } else {
+            //Accumulate the clusters that are not candidate goal objects
+            obstacle_points += *cloud_ptr;
         }
     }
+
+    obstacle_cloud = obstacle_points.makeShared();
+    pcl::toROSMsg(*obstacle_cloud, cloud_msg);
 
     cout << "Clusters found: " << cloud_ptrs.size() << endl;
     if(cloud_ptrs.empty()){
@@ -248,7 +390,7 @@ void CloudSegmenter:: segmentation(){
 
     segmented = true;
 
-    object_poses = vector<geometry_msgs::Pose>();
+    vector<geometry_msgs::Pose> cur_poses;
     vector<OrientedBoundingBox> OBBs;
     for (int i = 0; i < cloud_ptrs.size(); i++){
         OBBs.push_back(getOBBForCloud(cloud_ptrs[i]));
@@ -260,7 +402,7 @@ void CloudSegmenter:: segmentation(){
     //Combine poses with intersecting bounding boxes
     mergeCollidingBoxes();
 
-    //For each OBB, extract the pose and make a ROS msg
+    //For each OBB, extract the pose
 
     for(CloudPtrBoxMap::iterator it = cloud_boxes.begin(); it != cloud_boxes.end(); it++){
         OrientedBoundingBox box = (OrientedBoundingBox) it->second;
@@ -288,8 +430,17 @@ void CloudSegmenter:: segmentation(){
         pose_in.header.stamp = ros::Time::now();
         tf_listener.transformPose("/base", pose_in, pose_out);
         //cout << "Pose out: " << pose_out.pose << endl;
-        object_poses.push_back(pose_out.pose);
+        cur_poses.push_back(pose_out.pose);
     }
+
+    vector<moveit_msgs::CollisionObject> next_objs;
+    match_prev_cur_poses(cur_poses, next_objs, cur_objs);
+    for(int i = 0; i < next_objs.size(); i++){
+        cur_objs.push_back(next_objs[i]);
+    }
+    
+    prev_objs = next_objs;
+
 }
 
 void CloudSegmenter::points_callback(const sensor_msgs::PointCloud2::ConstPtr& msg){
@@ -302,6 +453,7 @@ void CloudSegmenter::points_callback(const sensor_msgs::PointCloud2::ConstPtr& m
     pcl_conversions::toPCL(*msg, pcl_pc);
     pcl::fromPCLPointCloud2(pcl_pc, *new_cloud);
     indices = pcl::IndicesPtr( new vector<int>() );
+
     pcl::removeNaNFromPointCloud(*new_cloud, *new_cloud, *indices);
 
     pcl::PassThrough<pcl::PointXYZRGB> pass;
@@ -309,6 +461,7 @@ void CloudSegmenter::points_callback(const sensor_msgs::PointCloud2::ConstPtr& m
     pass.setFilterFieldName ("z");
     pass.setFilterLimits (filter_min, filter_max);
     pass.filter (*indices);
+
 
     cloud = new_cloud;
     if(!has_cloud){
@@ -318,7 +471,9 @@ void CloudSegmenter::points_callback(const sensor_msgs::PointCloud2::ConstPtr& m
     has_cloud = true;
 
     if(has_desired_color){
+        cout << "segmenting" << endl;
         segmentation();
+        publish_poses();
     }
 }
 
@@ -330,27 +485,26 @@ void addComparison(pcl::ConditionAnd<pcl::PointXYZRGB>::Ptr range_cond,
                 new pcl::FieldComparison<pcl::PointXYZRGB>(channel, op, value)) );
 }
 
-void CloudSegmenter::goal_callback(const geometry_msgs::Pose msg){
-    PointColorCloud::Ptr transform_cloud(new PointColorCloud);
+void CloudSegmenter::exclude_object(const geometry_msgs::Pose object, const PointColorCloud::ConstPtr src_cloud, PointColorCloud::Ptr dst_cloud ){
 
     //Assume the object has object_height dimensions
     //Remove the part of the pointcloud containing the goal object (with a bit of padding)
-    const float side = object_side + exclusion_padding;
+    const float side = object_side + exclusion_padding*2;
 
     const float inner_side = object_side - exclusion_padding*2;
     const float outer_side = object_side + exclusion_padding*2;
     
     //Transform to the object frame (so that the center of the object is the origin)
-    Eigen::Vector3f position( msg.position.x, msg.position.y, msg.position.y ); //???
-    Eigen::Quaternionf orientation(msg.orientation.w, msg.orientation.x,
-                                   msg.orientation.y, msg.orientation.z);
+    Eigen::Vector3f position( object.position.x, object.position.y, object.position.y ); //???
+    Eigen::Quaternionf orientation(object.orientation.w, object.orientation.x,
+                                   object.orientation.y, object.orientation.z);
     Eigen::Isometry3f object_camera_tf; 
     object_camera_tf.translate(position);
     object_camera_tf.rotate(orientation);
 
     Eigen::Matrix4f object_camera = object_camera_tf.matrix();
     Eigen::Matrix4f camera_object = object_camera.inverse();
-    pcl::transformPointCloud(*cloud, *transform_cloud, camera_object);
+    pcl::transformPointCloud(*src_cloud, *dst_cloud, camera_object);
 
     //apply condition to exclude the cube
     //From http://pointclouds.org/documentation/tutorials/conditional_removal.php
@@ -363,7 +517,8 @@ void CloudSegmenter::goal_callback(const geometry_msgs::Pose msg){
     addComparison(range_cond, "z", pcl::ComparisonOps::GT, -side/2);
     addComparison(range_cond, "z", pcl::ComparisonOps::LT,  side/2);
     
-    /*addComparison(range_cond, "x", pcl::ComparisonOps::LT,  outer_side/2);
+    /*addComparison(range_cond, "x", pcl::ComparisonOps::GT, -outer_side/2);
+    addComparison(range_cond, "x", pcl::ComparisonOps::LT,  outer_side/2);
     addComparison(range_cond, "y", pcl::ComparisonOps::GT, -outer_side/2);
     addComparison(range_cond, "y", pcl::ComparisonOps::LT,  outer_side/2);
     addComparison(range_cond, "z", pcl::ComparisonOps::GT, -outer_side/2);
@@ -379,15 +534,38 @@ void CloudSegmenter::goal_callback(const geometry_msgs::Pose msg){
 
     pcl::ConditionalRemoval<pcl::PointXYZRGB> condrem;
     condrem.setCondition(range_cond); 
-    condrem.setInputCloud(transform_cloud);
-    condrem.filter(*transform_cloud);
+    condrem.setInputCloud(dst_cloud);
+    condrem.filter(*dst_cloud);
 
     //transform back
-    pcl::transformPointCloud(*transform_cloud, *transform_cloud, object_camera);
+    pcl::transformPointCloud(*dst_cloud, *dst_cloud, object_camera);
+
+}
+
+void CloudSegmenter::exclude_all_objects(vector<geometry_msgs::Pose> cur_poses){
+    PointColorCloud transform_cloud_obj(*cloud);
+    PointColorCloud::Ptr transform_cloud = transform_cloud_obj.makeShared();
+    
+
+    for(int i = 0; i < cur_poses.size(); i++){
+
+        exclude_object(cur_poses[i], transform_cloud, transform_cloud);
+    }
+
+    pcl::toROSMsg(*transform_cloud, cloud_msg);
+    obstacle_cloud = transform_cloud;
+}
+
+void CloudSegmenter::goal_callback(const geometry_msgs::Pose msg){
+
+    PointColorCloud::Ptr transform_cloud(new PointColorCloud);
+    
+    exclude_object(msg, cloud, transform_cloud);
 
     //publish it to topic /modified_points
     pcl::toROSMsg(*transform_cloud, cloud_msg);
 
+    obstacle_cloud = transform_cloud;
 }
 
 #endif

@@ -5,15 +5,24 @@
 #include <exception>
 #include <cmath>
 #include <cstdlib>
+#include <map>
 
 #include "ros/ros.h"
+#include <pluginlib/class_list_macros.h>
+#include <nodelet/nodelet.h>
 #include "tf/transform_listener.h"
 
 #include "std_msgs/Header.h"
 #include "sensor_msgs/PointCloud2.h"
 #include "geometry_msgs/PoseArray.h"
 #include "geometry_msgs/Pose.h"
+#include "geometry_msgs/Point.h"
 #include "geometry_msgs/Quaternion.h"
+#include "moveit_msgs/CollisionObject.h"
+#include <baxter_demos/CollisionObjectArray.h>
+
+
+#include "OrientedBoundingBox.h"
 
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
@@ -34,15 +43,14 @@
 #include <pcl_conversions/pcl_conversions.h>
 
 
-#include "OrientedBoundingBox.h"
-
 using namespace std;
+using namespace baxter_demos;
 
 typedef pcl::PointCloud<pcl::PointXYZRGB> PointColorCloud;
 typedef pair<PointColorCloud::Ptr, OrientedBoundingBox> CloudPtrBoxPair;
 typedef map<PointColorCloud::Ptr, OrientedBoundingBox> CloudPtrBoxMap;
-
-/*TODO: protect against segfaults on empty segmentation, make display copy of cloud because PCL viewer seems to destroy it ...?*/
+typedef map<string, geometry_msgs::Pose > IDPoseMap; 
+typedef map<string, moveit_msgs::CollisionObject > IDObjectMap; 
 
 class CloudSegmenter {
 private:
@@ -53,6 +61,8 @@ private:
     int point_color_threshold;
     int region_color_threshold;
     int min_cluster_size;
+
+    int object_sequence;
 
     bool has_desired_color;
     bool has_cloud;
@@ -68,22 +78,28 @@ private:
     pcl::IndicesPtr indices;
     ros::NodeHandle n;
     ros::Subscriber cloud_sub;
-    ros::Publisher pose_pub;
+    ros::Publisher object_pub;
     ros::Subscriber goal_sub;
     ros::Publisher cloud_pub;
 
     pcl::RegionGrowingRGB<pcl::PointXYZRGB> reg;
     pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud;
-    pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr display_cloud;
+    pcl::PointCloud <pcl::PointXYZRGB>::Ptr obstacle_cloud;
     pcl::PointCloud <pcl::PointXYZRGB>::Ptr colored_cloud;
 
     vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> cloud_ptrs;
     CloudPtrBoxMap cloud_boxes;
-    vector<geometry_msgs::Pose> object_poses;
+    //vector<geometry_msgs::Pose> cur_poses;
+    vector<moveit_msgs::CollisionObject> prev_objs;
+    vector<moveit_msgs::CollisionObject> cur_objs;
+
     tf::TransformListener tf_listener;
 
     sensor_msgs::PointCloud2 cloud_msg;
 
+    void match_prev_cur_poses(vector<geometry_msgs::Pose> cur_poses,
+                              vector<moveit_msgs::CollisionObject>& next_objs,
+                              vector<moveit_msgs::CollisionObject>& remove_objs  );
     void mergeCollidingBoxes();
     //static void addComparison(pcl::ConditionAnd<pcl::PointXYZRGB>::Ptr range_cond, const char* channel, pcl::ComparisonOps::CompareOp op, float value);
 
@@ -110,10 +126,16 @@ public:
     void getClickedPoint(const pcl::visualization::PointPickingEvent& event,
                          void* args);
     pcl::PointRGB getCloudColorAt(int x, int y);
-    pcl::PointRGB getCloudColorAt(int n);
+    pcl::PointRGB getCloudColorAt(size_t n);
    
     void segmentation();
     void points_callback(const sensor_msgs::PointCloud2::ConstPtr& msg);
+
+
+    void exclude_object(const geometry_msgs::Pose object,
+                        const PointColorCloud::ConstPtr src_cloud,
+                        PointColorCloud::Ptr dst_cloud );
+    void exclude_all_objects(vector<geometry_msgs::Pose> cur_poses);
     void goal_callback(const geometry_msgs::Pose msg);
 };
 
