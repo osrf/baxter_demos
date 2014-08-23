@@ -3,6 +3,7 @@
 
 #include "CloudSegmenter.h"
 
+namespace baxter_demos{
 
 bool CloudSegmenter::isPointWithinDesiredRange(const pcl::PointRGB input_pt,
                                const pcl::PointRGB desired_pt, int radius){
@@ -37,8 +38,34 @@ Eigen::Vector3i CloudSegmenter::getDesiredColor(){
                            (int) desired_color.b);
 }
 
-CloudSegmenter::CloudSegmenter() : indices( new vector<int>()) {
+void CloudSegmenter::visualize(){
+    ros::Rate loop_rate(100);
+    pcl::visualization::CloudViewer cloud_viewer("Cloud viewer");
+    cloud_viewer.registerPointPickingCallback(&CloudSegmenter::getClickedPoint, *this, (void*) NULL );
+
+    //event loop
+    while(ros::ok() && !cloud_viewer.wasStopped()){
+        ros::spinOnce();
+        loop_rate.sleep();
+        //Lock
+        cloud_mutex.lock();
+        if(hasColor()){
+            pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud = getClusteredCloudPtr();
+            cloud_viewer.showCloud(cloud);
+        } else if(hasCloud()){
+            pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud = getCloudPtr();
+            cloud_viewer.showCloud(cloud);
+        }
+        //Unlock
+        cloud_mutex.unlock();
+    }
+}
+
+void CloudSegmenter::onInit(){
     //load params from yaml
+
+    //Create visualization thread
+    boost::thread visualizer( boost::bind( &CloudSegmenter::visualize, this) );
 
     n.getParam("radius", radius);
     n.getParam("filter_min", filter_min);
@@ -63,10 +90,7 @@ CloudSegmenter::CloudSegmenter() : indices( new vector<int>()) {
 
     cloud_sub = n.subscribe("/camera/depth_registered/points", 100,
                                       &CloudSegmenter::points_callback, this);
-    //goal_sub = n.subscribe("object_finder/next_goal_pose", 100,
-    //                       &CloudSegmenter::goal_callback, this);
-
-    //TODO: add args for topic name
+    
     object_pub = n.advertise<CollisionObjectArray>(
                         "/object_tracker/collision_objects", 100);
 
@@ -339,8 +363,10 @@ void CloudSegmenter:: segmentation(){
  
     vector <pcl::PointIndices> clusters;
     reg.extract (clusters);
- 
+
+    cloud_mutex.lock(); 
     colored_cloud = reg.getColoredCloud();
+    cloud_mutex.unlock(); 
 
     cloud_ptrs.clear();
 
@@ -462,8 +488,9 @@ void CloudSegmenter::points_callback(const sensor_msgs::PointCloud2::ConstPtr& m
     pass.setFilterLimits (filter_min, filter_max);
     pass.filter (*indices);
 
-
+    cloud_mutex.lock();
     cloud = new_cloud;
+    cloud_mutex.unlock();
     if(!has_cloud){
         cloud_msg = sensor_msgs::PointCloud2(*msg);
     }
@@ -567,5 +594,5 @@ void CloudSegmenter::goal_callback(const geometry_msgs::Pose msg){
 
     obstacle_cloud = transform_cloud;
 }
-
+}
 #endif

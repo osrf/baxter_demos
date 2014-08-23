@@ -1,5 +1,8 @@
 #include "ros/ros.h"
 #include "CloudSegmenter.h"
+
+using namespace baxter_demos;
+
 int main(int argc, char** argv){
     ros::init(argc, argv, "object_finder_3d");
     CloudSegmenter cs;
@@ -12,11 +15,9 @@ int main(int argc, char** argv){
         ros::spinOnce();
         loop_rate.sleep();
         if(cs.hasColor()){
-            //cs.renderClusters();
             pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud = cs.getClusteredCloudPtr();
             cloud_viewer.showCloud(cloud);
         } else if(cs.hasCloud()){
-            //cs.renderCloud();
             pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud = cs.getCloudPtr();
             cloud_viewer.showCloud(cloud);
         }
