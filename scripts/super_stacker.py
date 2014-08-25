@@ -19,8 +19,8 @@ class DepthCaller:
     def __init__(self, limb):
         self.done = False
         self.limb = limb
-
-        self.depth_handler = rospy.Subscriber("object_tracker/"+limb+"/goal_poses", PoseArray, self.depth_callback)
+        self.depth_handler = rospy.Subscriber("object_tracker/"+limb+"/goal_poses",
+                                              PoseArray, self.depth_callback)
 
     def depth_callback(self, data):
         print "Getting object poses"
@@ -40,7 +40,7 @@ class DepthCaller:
 
 def incrementPoseZ(pose, inc):
     pos = numpy.array(pose[0:3])
-    pos += numpy.array((0, 0, inc))
+    pos += numpy.array((0.0, 0.0, inc))
     pose = numpy.concatenate( (pos, pose[3:7]) )
     return pose.tolist()
 

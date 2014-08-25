@@ -11,7 +11,6 @@
 #include <boost/thread/mutex.hpp>
 
 #include "ros/ros.h"
-#include <pluginlib/class_list_macros.h>
 #include <nodelet/nodelet.h>
 #include "tf/transform_listener.h"
 
@@ -77,6 +76,7 @@ private:
     int  sample_size;
 
     boost::mutex cloud_mutex;
+    boost::thread* visualizer;
 
     string frame_id;
     pcl::PointRGB desired_color;
@@ -91,7 +91,7 @@ private:
     pcl::RegionGrowingRGB<pcl::PointXYZRGB> reg;
 
     //Lock cloud pointer
-    pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud;
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud;
     pcl::PointCloud <pcl::PointXYZRGB>::Ptr obstacle_cloud;
     pcl::PointCloud <pcl::PointXYZRGB>::Ptr colored_cloud;
 
@@ -106,6 +106,7 @@ private:
     sensor_msgs::PointCloud2 cloud_msg;
 
     void visualize();
+    void visualize_old();
     void match_prev_cur_poses(vector<geometry_msgs::Pose> cur_poses,
                               vector<moveit_msgs::CollisionObject>& next_objs,
                               vector<moveit_msgs::CollisionObject>& remove_objs  );
@@ -115,6 +116,8 @@ private:
 public:
 
     //pcl::visualization::CloudViewer cloud_viewer;
+    CloudSegmenter();
+
     pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr getCloudPtr();
     pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr getDisplayCloudPtr();
     pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr getClusteredCloudPtr();
@@ -148,8 +151,8 @@ public:
     void goal_callback(const geometry_msgs::Pose msg);
 };
 
+
 }
 
-PLUGINLIB_DECLARE_CLASS(baxter_demos, CloudSegmenter, baxter_demos::CloudSegmenter, nodelet::Nodelet);
 
 #endif

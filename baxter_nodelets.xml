@@ -1,7 +1,7 @@
-<library path="lib/libCloudSegmenter">
+<library path="lib/libsegmenter">
   <class name="baxter_demos/CloudSegmenter" type="baxter_demos::CloudSegmenter" base_class_type="nodelet::Nodelet">
-  <description>
-    Nodelet to handle point cloud processing for a Baxter pick and place demo.
-  </description>
+    <description>
+      Nodelet to handle point cloud processing for a Baxter pick and place demo.
+    </description>
   </class>
 </library>

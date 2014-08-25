@@ -7,19 +7,41 @@ import copy
 import rospy
 import moveit_commander
 import moveit_msgs.msg
-from moveit_msgs.msg import CollisionObject
+from moveit_msgs.msg import CollisionObject, PlanningScene
 import geometry_msgs.msg
 import baxter_interface
 from baxter_interface import CHECK_VERSION
 import yaml
 from super_stacker import DepthCaller, incrementPoseMsgZ
 
+class ObjectManager:
+    # Subscribe to the /object_tracker/collision_objects topic
+    # Make any necessary modifications received from this object's owner
+    # Publish collision_objects to planning_scene
+
+    def callback(self, data):
+        self.planning_scene = PlanningScene()
+        collision_objects = data.objects
+        for obj in collision_objects:
+            if obj.id in id_operations:
+                obj.operation = id_operations[obj.id]
+            self.planning_scene.world.collision_objects.push_back(obj)
+        self.publish()
+        
+    def publish(self):
+        pub.publish(self.planning_scene)
+
+    def __init__():
+        sub = rospy.Subscriber("object_tracker/collision_objects", CollisionObjectArray, self.callback)
+        pub = rospy.Publisher("planning_scene", PlanningScene)
+        self.id_operations = {}
+        self.planning_scene = None
+        
 
 config_folder = rospy.get_param('object_tracker/config_folder')
 
 with open(config_folder+'servo_to_object.yaml', 'r') as f:
     params = yaml.load(f)
-
 
 def main():
     arg_fmt = argparse.RawDescriptionHelpFormatter
@@ -46,23 +68,23 @@ def main():
 
     rate = rospy.Rate(1)
     # Get the goal poses
-    dc = DepthCaller(limb)
+    """dc = DepthCaller(limb)
     while (not dc.done) and (not rospy.is_shutdown()):
         print "No poses found yet"
-        rate.sleep()
+        rate.sleep()"""
     
     robot = moveit_commander.RobotCommander()
     scene = moveit_commander.PlanningSceneInterface()
     group = moveit_commander.MoveGroupCommander(limb+"_arm")
     group.allow_replanning(True)
 
-    if visualize:
+    """if visualize:
         display_trajectory_publisher = rospy.Publisher(
                                     '/move_group/display_planned_path',
                                     moveit_msgs.msg.DisplayTrajectory)
         rospy.sleep(5)
     else:
-        display_trajectory_publisher = None
+        display_trajectory_publisher = None"""
 
 
     print("Getting robot state... ")
@@ -77,13 +99,27 @@ def main():
         gripper_if.calibrate()
 
 
-    goal_pose_publisher = rospy.Publisher('object_finder/next_goal_pose', geometry_msgs.msg.Pose)
+    #goal_pose_publisher = rospy.Publisher('object_finder/next_goal_pose', geometry_msgs.msg.Pose)
     
-    stack_pose = dc.object_pose_msgs[len(dc.object_pose_msgs)-1]
-    stack_pose = incrementPoseMsgZ(stack_pose, params['object_height'])
-    dc.object_pose_msgs.pop(len(dc.object_pose_msgs)-1)
-    i = 0
-    for pose in dc.object_pose_msgs:
+    obj_manager = ObjectManager()
+    while obj_manager.planning_scene is None:
+        rate.sleep()
+    objects = obj_manager.planning_scene.world.collisions
+    if len(objects) > 1:
+        stack_obj = objects[len(objects)-1]
+        stack_obj = incrementPoseMsgZ(stack_obj, params['object_height']/2.0)
+        objects.pop(len(objects)-1)
+    elif len(objects) == 1:
+        stack_obj = objects[0]
+
+    #i = 0
+    for obj in objects:
+        
+        pose = obj.primitive_poses[0]
+        if obj.id in object_manager.id_operations:
+            object_manager.id_operations[obj.id] = CollisionObject.REMOVE 
+        object_manager.publish()
+
         print "setting target to pose"
         # Move to the next block
         goal_pose_publisher.publish(pose)
@@ -96,13 +132,13 @@ def main():
 
         # is there a better way of checking this?
         plan_found = len(plan.joint_trajectory.points) > 0
-        if visualize and plan_found:
+        """if visualize and plan_found:
             display_trajectory = moveit_msgs.msg.DisplayTrajectory()
             display_trajectory.trajectory_start = robot.get_current_state()
             display_trajectory.trajectory.append(plan)
             display_trajectory_publisher.publish(display_trajectory)
-            print "============ Waiting while RVIZ displays plan1..."
-            rospy.sleep(5)
+            print "============ Waiting while RVIZ displays plan1..." """
+        rospy.sleep(5)
 
         group.go(wait=True)
 
@@ -111,7 +147,7 @@ def main():
 
         # Move to the stacking position
         group.clear_pose_targets()
-        group.set_pose_target(stack_pose)
+        group.set_pose_target(stack_obj)
         plan = group.plan()
         plan_found = len(plan.joint_trajectory.points) > 0
 
@@ -121,8 +157,11 @@ def main():
             gripper_if.open(block=True)
         
         # Get the next stack pose
-        stack_pose = incrementPoseMsgZ(pose, params['object_height'])
-        i+=1
+        stack_obj = incrementPoseMsgZ(pose, params['object_height'])
+
+        if obj.id in object_manager.id_operations:
+            object_manager.id_operations[obj.id] = CollisionObject.ADD
+        #i+=1
 
 if __name__ == "__main__":
     main()

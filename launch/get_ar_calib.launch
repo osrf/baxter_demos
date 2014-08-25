@@ -1,0 +1,4 @@
+<launch>
+  <param name="object_tracker/config_folder" value="$(find baxter_demos)/config/"/>
+    <node pkg="baxter_demos" type="get_ar_calib.py" name="get_ar_calib"/>
+</launch>

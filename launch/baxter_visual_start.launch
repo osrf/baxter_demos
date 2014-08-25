@@ -1,8 +1,6 @@
 <!--Durrrrr how to put yaml into args for static transform publisher-->
 <launch>
-  <include file="$(find freenect_launch)/launch/freenect.launch"/>
   
-  <arg name="transformation" />
 
   <node pkg="tf" type="static_transform_publisher" name="base_cam_broadcaster" args="1.50854462496, 0.280429286974, 0.454355137179, 0.263963784152, 0.0598209178684, -0.945353449074, 0.181800535655 base camera_link 100" />
 

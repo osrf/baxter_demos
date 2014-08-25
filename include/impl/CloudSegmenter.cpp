@@ -3,7 +3,11 @@
 
 #include "CloudSegmenter.h"
 
+#include <pluginlib/class_list_macros.h>
+
 namespace baxter_demos{
+
+PLUGINLIB_DECLARE_CLASS(baxter_demos, CloudSegmenter, baxter_demos::CloudSegmenter, nodelet::Nodelet)
 
 bool CloudSegmenter::isPointWithinDesiredRange(const pcl::PointRGB input_pt,
                                const pcl::PointRGB desired_pt, int radius){
@@ -38,7 +42,7 @@ Eigen::Vector3i CloudSegmenter::getDesiredColor(){
                            (int) desired_color.b);
 }
 
-void CloudSegmenter::visualize(){
+void CloudSegmenter::visualize_old(){
     ros::Rate loop_rate(100);
     pcl::visualization::CloudViewer cloud_viewer("Cloud viewer");
     cloud_viewer.registerPointPickingCallback(&CloudSegmenter::getClickedPoint, *this, (void*) NULL );
@@ -48,24 +52,93 @@ void CloudSegmenter::visualize(){
         ros::spinOnce();
         loop_rate.sleep();
         //Lock
-        cloud_mutex.lock();
+        //cloud_mutex.lock();
         if(hasColor()){
-            pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud = getClusteredCloudPtr();
-            cloud_viewer.showCloud(cloud);
-        } else if(hasCloud()){
-            pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud = getCloudPtr();
+            //pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud = getClusteredCloudPtr();
+            cloud_viewer.showCloud(colored_cloud);
+        } else if(has_cloud){
+            //pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud = getCloudPtr();
             cloud_viewer.showCloud(cloud);
         }
         //Unlock
-        cloud_mutex.unlock();
+        //cloud_mutex.unlock();
     }
+}
+
+void CloudSegmenter::visualize(){
+    cout << "Entering visualization thread" << endl;
+    boost::shared_ptr<pcl::visualization::PCLVisualizer> cloud_viewer( new pcl::visualization::PCLVisualizer("Cloud viewer"));
+    //pcl::visualization::PCLVisualizer cloud_viewer("Cloud viewer");
+    cloud_viewer->setBackgroundColor (0, 0, 0);
+    cloud_viewer->addCoordinateSystem(1.0);
+    cloud_viewer->registerPointPickingCallback(
+                &CloudSegmenter::getClickedPoint, *this, (void*) NULL );
+    cloud_viewer->addCoordinateSystem(1.0);
+    cloud_viewer->initCameraParameters();
+    //cloud_viewer->addText("No valid color selected yet.", 10, 10, 1.0, 1.0, 1.0, "color_info");
+
+    pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb;
+    pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb2;
+    ros::Rate loop_rate(100);
+    bool displayed_cloud = false;
+    bool displayed_color = false;
+    //event loop
+    //PointColorCloud vis;
+    //PointColorCloud::Ptr vis_cloud;
+    while(ros::ok() && !cloud_viewer->wasStopped()){
+        /*if(has_cloud){
+            cloud_mutex.lock();
+            vis = PointColorCloud(*cloud);
+            vis_cloud = vis.makeShared();
+            cloud_mutex.unlock();
+        }*/
+        ros::spinOnce();
+        cloud_viewer->spinOnce();
+        loop_rate.sleep();
+        //boost::this_thread::sleep (boost::posix_time::microseconds (100000));
+        if(wasSegmented()){
+            char color_info[128];
+            Eigen::Vector3i color = getDesiredColor();
+            sprintf(color_info, "Color selected: %d, %d, %d", color[0], color[1], color[2]);
+            //cloud_viewer->updateText(color_info, 10, 10, 1.0, 1.0, 1.0, "color_info");
+
+            if (!displayed_color){
+                cloud_viewer->removePointCloud("Input cloud");
+                rgb2 = pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB>(colored_cloud);
+                cloud_viewer->addPointCloud<pcl::PointXYZRGB>(colored_cloud, rgb, "Cluster cloud");
+                cloud_viewer->initCameraParameters();
+                displayed_color = true;
+            } else {
+                cloud_viewer->updatePointCloud(colored_cloud, "Cluster cloud");
+            }
+
+        } else if(has_cloud && !displayed_cloud){
+            if (cloud == NULL){
+                throw ros::Exception("cloud was null in visualizer");
+            }
+            cout << "Point cloud test point: " << cloud->at(0) << endl;
+            rgb = pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB>(cloud);
+            cout << "Adding point cloud" << endl;
+            cloud_viewer->addPointCloud<pcl::PointXYZRGB>(cloud, rgb, "Input cloud");
+            cout << "Added point cloud" << endl;
+
+            displayed_cloud = true;
+ 
+        } else if (has_cloud){
+            cloud_viewer->updatePointCloud(cloud, "Input cloud");
+        }
+        //cout << "unlocking" << endl;
+    }
+}
+
+CloudSegmenter::CloudSegmenter() : has_cloud(false), has_desired_color(false), segmented(false)  {
 }
 
 void CloudSegmenter::onInit(){
     //load params from yaml
 
     //Create visualization thread
-    boost::thread visualizer( boost::bind( &CloudSegmenter::visualize, this) );
+    n = getNodeHandle();
 
     n.getParam("radius", radius);
     n.getParam("filter_min", filter_min);
@@ -88,7 +161,13 @@ void CloudSegmenter::onInit(){
     has_cloud = false;
     segmented = false;
 
-    cloud_sub = n.subscribe("/camera/depth_registered/points", 100,
+    cloud_mutex.unlock();
+
+    visualizer = new boost::thread( boost::bind( &CloudSegmenter::visualize, this) );
+    //visualizer->detach();
+    //boost::thread visualizer = boost::thread(boost::bind( &CloudSegmenter::visualize, this));
+
+    cloud_sub = n.subscribe("/camera/depth_registered/points", 500,
                                       &CloudSegmenter::points_callback, this);
     
     object_pub = n.advertise<CollisionObjectArray>(
@@ -97,6 +176,7 @@ void CloudSegmenter::onInit(){
     cloud_pub = n.advertise<sensor_msgs::PointCloud2>("/modified_points", 200);
 
     object_sequence = 0;
+    cout << "finished initialization" << endl;
 }
 
 Eigen::Vector3f positionToVector(geometry_msgs::Point p){
@@ -254,7 +334,7 @@ void CloudSegmenter:: getClickedPoint(
     pcl::PointXYZRGB picked_pt;
     event.getPoint(picked_pt.x, picked_pt.y, picked_pt.z);
 
-    vector<float> distances (1);
+    vector<float> distances(1);
     vector<int> search_indices(1);
     search.nearestKSearch (picked_pt, 1, search_indices, distances);
     desired_color = getCloudColorAt( (size_t) search_indices[0]);
@@ -364,9 +444,9 @@ void CloudSegmenter:: segmentation(){
     vector <pcl::PointIndices> clusters;
     reg.extract (clusters);
 
-    cloud_mutex.lock(); 
+    //cloud_mutex.lock(); 
     colored_cloud = reg.getColoredCloud();
-    cloud_mutex.unlock(); 
+    //cloud_mutex.unlock(); 
 
     cloud_ptrs.clear();
 
@@ -470,6 +550,7 @@ void CloudSegmenter:: segmentation(){
 }
 
 void CloudSegmenter::points_callback(const sensor_msgs::PointCloud2::ConstPtr& msg){
+    //cout << "got points" << endl;
     frame_id = msg->header.frame_id;
     // Members: float x, y, z; uint32_t rgba
     pcl::PointCloud <pcl::PointXYZRGB>::Ptr new_cloud
@@ -480,6 +561,8 @@ void CloudSegmenter::points_callback(const sensor_msgs::PointCloud2::ConstPtr& m
     pcl::fromPCLPointCloud2(pcl_pc, *new_cloud);
     indices = pcl::IndicesPtr( new vector<int>() );
 
+    //cout << "Locking in points callback" << endl;
+    cloud_mutex.lock();
     pcl::removeNaNFromPointCloud(*new_cloud, *new_cloud, *indices);
 
     pcl::PassThrough<pcl::PointXYZRGB> pass;
@@ -488,9 +571,10 @@ void CloudSegmenter::points_callback(const sensor_msgs::PointCloud2::ConstPtr& m
     pass.setFilterLimits (filter_min, filter_max);
     pass.filter (*indices);
 
-    cloud_mutex.lock();
     cloud = new_cloud;
+    //cout << "Unlocking in points callback" << endl;
     cloud_mutex.unlock();
+
     if(!has_cloud){
         cloud_msg = sensor_msgs::PointCloud2(*msg);
     }
@@ -498,8 +582,10 @@ void CloudSegmenter::points_callback(const sensor_msgs::PointCloud2::ConstPtr& m
     has_cloud = true;
 
     if(has_desired_color){
+        cloud_mutex.lock();
         cout << "segmenting" << endl;
         segmentation();
+        cloud_mutex.unlock();
         publish_poses();
     }
 }

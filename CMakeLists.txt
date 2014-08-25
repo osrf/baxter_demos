@@ -11,6 +11,8 @@ find_package(OpenCV REQUIRED)
 
 find_package(PCL 1.7.2 REQUIRED COMPONENTS common io filters segmentation search visualization features)
 
+find_package(Boost)
+
 find_package(catkin REQUIRED COMPONENTS
     nodelet
     roscpp
@@ -65,8 +67,10 @@ include_directories(include)
 include_directories(include/impl)
 set(HEADER_FILES include/impl/CloudSegmenter.cpp include/CloudSegmenter.h include/OrientedBoundingBox.h)
 add_library(segmenter ${HEADER_FILES})
+target_link_libraries(segmenter ${PCL_LIBRARIES} ${catkin_LIBRARIES} ${boost_libraries})
 
 # don't actually need OpenCV yet
+#add_executable(object_finder_3d src/object_finder_3d.cpp)
 #add_executable(object_finder_3d src/object_finder_3d.cpp)
 #add_executable(MOI_test src/MOI_test.cpp)
 #target_link_libraries(object_finder_3d segmenter)
