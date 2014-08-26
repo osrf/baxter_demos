@@ -23,7 +23,6 @@
 #include "moveit_msgs/CollisionObject.h"
 #include <baxter_demos/CollisionObjectArray.h>
 
-
 #include "OrientedBoundingBox.h"
 
 #include <pcl/io/pcd_io.h>
@@ -83,9 +82,11 @@ private:
     
     pcl::IndicesPtr indices;
     ros::NodeHandle n;
+
     ros::Subscriber cloud_sub;
+    ros::Subscriber color_sub;
+
     ros::Publisher object_pub;
-    ros::Subscriber goal_sub;
     ros::Publisher cloud_pub;
 
     pcl::RegionGrowingRGB<pcl::PointXYZRGB> reg;
@@ -142,6 +143,7 @@ public:
    
     void segmentation();
     void points_callback(const sensor_msgs::PointCloud2::ConstPtr& msg);
+    void color_callback(const geometry_msgs::Point msg);
 
 
     void exclude_object(const geometry_msgs::Pose object,

@@ -68,11 +68,6 @@ include_directories(include/impl)
 set(HEADER_FILES include/impl/CloudSegmenter.cpp include/CloudSegmenter.h include/OrientedBoundingBox.h)
 add_library(segmenter ${HEADER_FILES})
 target_link_libraries(segmenter ${PCL_LIBRARIES} ${catkin_LIBRARIES} ${boost_libraries})
+add_executable(ColorPicker src/ColorPicker.cpp)
+target_link_libraries(ColorPicker segmenter)
 
-# don't actually need OpenCV yet
-#add_executable(object_finder_3d src/object_finder_3d.cpp)
-#add_executable(object_finder_3d src/object_finder_3d.cpp)
-#add_executable(MOI_test src/MOI_test.cpp)
-#target_link_libraries(object_finder_3d segmenter)
-#target_link_libraries(object_finder_3d ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${PCL_LIBRARIES} ${PCL_FEATURE_LIBRARIES})
-#target_link_libraries(MOI_test ${catkin_LIBRARIES} ${PCL_LIBRARIES})

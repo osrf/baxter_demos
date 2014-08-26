@@ -132,13 +132,9 @@ def main():
 
         # is there a better way of checking this?
         plan_found = len(plan.joint_trajectory.points) > 0
-        """if visualize and plan_found:
-            display_trajectory = moveit_msgs.msg.DisplayTrajectory()
-            display_trajectory.trajectory_start = robot.get_current_state()
-            display_trajectory.trajectory.append(plan)
-            display_trajectory_publisher.publish(display_trajectory)
-            print "============ Waiting while RVIZ displays plan1..." """
-        rospy.sleep(5)
+        
+        print "============ Waiting while RVIZ displays plan1..."
+        rospy.sleep(3)
 
         group.go(wait=True)
 
@@ -150,6 +146,9 @@ def main():
         group.set_pose_target(stack_obj)
         plan = group.plan()
         plan_found = len(plan.joint_trajectory.points) > 0
+
+        print "============ Waiting while RVIZ displays plan2..."
+        rospy.sleep(3)
 
         group.go(wait=True)
 

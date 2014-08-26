@@ -1,0 +1,11 @@
+<!--Durrrrr how to put yaml into args for static transform publisher-->
+<launch>
+
+  <node pkg="robot_state_publisher" type="robot_state_publisher" name="baxter_state_pub">  
+    <remap from="joint_states" to="/robot/joint_states"/>
+  </node>
+
+  <node pkg="tf" type="static_transform_publisher" name="base_cam_broadcaster" args="0.137320084211, 0.0166499816875, 0.495443136224, -0.0289157480406, 0.477767145606, 0.0453079985831, 0.876840703526 base camera_link 100"/>
+
+
+</launch>
