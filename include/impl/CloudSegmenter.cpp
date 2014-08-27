@@ -45,6 +45,7 @@ Eigen::Vector3i CloudSegmenter::getDesiredColor(){
 CloudSegmenter::CloudSegmenter() : has_cloud(false), has_desired_color(false), segmented(false)  {
 }
 
+
 void CloudSegmenter::onInit(){
     //load params from yaml
 
@@ -58,14 +59,13 @@ void CloudSegmenter::onInit(){
     n.getParam("point_color_threshold", point_color_threshold);
     n.getParam("region_color_threshold", region_color_threshold);
     n.getParam("min_cluster_size", min_cluster_size);
+    n.getParam("max_cluster_size", max_cluster_size);
 
-    string object_side_str;
-    string exclusion_padding_str;
-    n.getParam("object_height", object_side_str);
-    n.getParam("exclusion_padding", exclusion_padding_str);
-    object_side = atof(object_side_str.c_str());
-    exclusion_padding = atof(exclusion_padding_str.c_str());
-
+    
+    n.getParam("exclusion_padding", exclusion_padding);
+    n.getParam("tolerance", tolerance);
+    n.getParam("object_height", object_side);
+    
     n.getParam("sample_size", sample_size);
 
     has_desired_color = false;
@@ -73,10 +73,6 @@ void CloudSegmenter::onInit(){
     segmented = false;
 
     //cloud_mutex.unlock();
-
-    //visualizer = new boost::thread( boost::bind( &CloudSegmenter::visualize, this) );
-    //visualizer->detach();
-    //boost::thread visualizer = boost::thread(boost::bind( &CloudSegmenter::visualize, this));
 
     cloud_sub = n.subscribe("/camera/depth_registered/points", 100,
                                       &CloudSegmenter::points_callback, this);
@@ -97,8 +93,7 @@ Eigen::Vector3f positionToVector(geometry_msgs::Point p){
     return Eigen::Vector3f(p.x, p.y, p.z);
 }
 
-//Compare goal poses: by greater magnitude
-
+//Compare goal poses by greater magnitude from origin
 class pose_compare{
     public:
     bool operator()(geometry_msgs::Pose pose_a, geometry_msgs::Pose pose_b){
@@ -114,7 +109,6 @@ class pose_compare{
 void CloudSegmenter::match_prev_cur_poses(vector<geometry_msgs::Pose> cur_poses,
                             vector<moveit_msgs::CollisionObject>& next_objs,
                             vector<moveit_msgs::CollisionObject>& remove_objs ){
-
 
     int prev_len = prev_objs.size();
     int cur_len = cur_poses.size();
@@ -134,7 +128,6 @@ void CloudSegmenter::match_prev_cur_poses(vector<geometry_msgs::Pose> cur_poses,
             geometry_msgs::Pose cur_pose = cur_poses[i];
             Eigen::Vector3f cur_point = positionToVector( cur_pose.position );
             float min_d = 1000; //things probably won't get bigger than this?
-            //geometry_msgs::Pose argmin;
             moveit_msgs::CollisionObject argmin;
             for(int j = 0; j < prev_len; j++){
                 geometry_msgs::Pose prev_pose = prev_objs[j].primitive_poses[0];
@@ -184,7 +177,8 @@ void CloudSegmenter::match_prev_cur_poses(vector<geometry_msgs::Pose> cur_poses,
         }
     }
 
-    // For all the current poses that were not matched with a previous pose, add a new CollisionObject
+    // For all the current poses that were not matched with a previous pose,
+    // add a new CollisionObject
 
     for(int j = 0; j < cur_poses.size(); j++){
         if(added_poses.find(cur_poses[j]) == added_poses.end()){
@@ -298,7 +292,6 @@ void CloudSegmenter::mergeCollidingBoxes(){
 
 void CloudSegmenter:: segmentation(){
 
-    cout << "Starting segmentation" << endl;
     /* Segmentation code from:
        http://pointclouds.org/documentation/tutorials/region_growing_rgb_segmentation.php*/
 
@@ -308,27 +301,28 @@ void CloudSegmenter:: segmentation(){
                         <pcl::PointXYZRGB> >
                         (new pcl::search::KdTree<pcl::PointXYZRGB>);
 
-    reg.setInputCloud (cloud);
+    cloud_ptrs.clear();
+    cloud_boxes.clear();
+    vector <pcl::PointIndices> clusters;
+    PointColorCloud obstacle_points;
+    PointColorCloud goal_obj_points;
+
+    /*reg.setInputCloud (cloud);
     reg.setIndices (indices);
     reg.setSearchMethod (tree);
     reg.setDistanceThreshold (distance_threshold);
     reg.setPointColorThreshold (point_color_threshold);
     reg.setRegionColorThreshold (region_color_threshold);
     reg.setMinClusterSize (min_cluster_size);
- 
-    vector <pcl::PointIndices> clusters;
-    reg.extract (clusters);
 
+    reg.extract (clusters);
+   
     //cloud_mutex.lock(); 
     colored_cloud = reg.getColoredCloud();
     //cloud_mutex.unlock(); 
 
-    cloud_ptrs.clear();
-
-    cloud_boxes.clear();
     // Select the correct color clouds from the segmentation
     
-    PointColorCloud obstacle_points;
 
     for (int i = 0; i < clusters.size(); i++){
         pcl::PointIndices cluster = clusters[i];
@@ -358,6 +352,36 @@ void CloudSegmenter:: segmentation(){
             //Accumulate the clusters that are not candidate goal objects
             obstacle_points += *cloud_ptr;
         }
+    }*/
+
+    //get all the orange points
+    int j = 0;
+    for(int i = 0; i < (*indices).size(); i++){
+        pcl::PointXYZRGB point = cloud->at(i);
+        pcl::PointRGB rgb(point.b, point.g, point.r);
+        if(isPointWithinDesiredRange(rgb, desired_color, radius)){
+            goal_obj_points.push_back(point);
+            j++;
+        } else {
+            obstacle_points.push_back(point);
+        }
+    }
+    PointColorCloud::Ptr goal_ptr = goal_obj_points.makeShared( );
+    
+    //separate connected components into individual clusters
+    pcl::EuclideanClusterExtraction<pcl::PointXYZRGB> extractor;
+    extractor.setSearchMethod(tree);
+    extractor.setClusterTolerance(tolerance);
+    extractor.setMinClusterSize(min_cluster_size);
+    extractor.setMaxClusterSize(max_cluster_size);
+    extractor.setInputCloud(goal_ptr);
+    tree->setInputCloud(goal_ptr);
+    extractor.extract(clusters);
+
+    for(int i = 0; i < clusters.size(); i++){
+        PointColorCloud cloud_subset = PointColorCloud(*cloud, clusters[i].indices);
+        PointColorCloud::Ptr cloud_ptr = cloud_subset.makeShared();
+        cloud_ptrs.push_back(cloud_ptr);
     }
 
     obstacle_cloud = obstacle_points.makeShared();
@@ -365,7 +389,7 @@ void CloudSegmenter:: segmentation(){
 
     cout << "Clusters found: " << cloud_ptrs.size() << endl;
     if(cloud_ptrs.empty()){
-        has_desired_color = false;
+        //has_desired_color = false;
         return;
     }
 
@@ -408,7 +432,7 @@ void CloudSegmenter:: segmentation(){
         //cout << "Pose in: " << pose_in.pose << endl;
         pose_in.header.frame_id = frame_id;
         geometry_msgs::PoseStamped pose_out;
-        pose_in.header.stamp = ros::Time::now();
+        //pose_in.header.stamp = ros::Time::now();
         tf_listener.transformPose("/base", pose_in, pose_out);
         //cout << "Pose out: " << pose_out.pose << endl;
         cur_poses.push_back(pose_out.pose);
@@ -457,8 +481,10 @@ void CloudSegmenter::points_callback(const sensor_msgs::PointCloud2::ConstPtr& m
     has_cloud = true;
 
     if(has_desired_color){
+        cout << "Segmenting for desired color: " << (int) desired_color.r <<
+                ", " << (int) desired_color.g << ", " << (int) desired_color.b << endl;
+
         //cloud_mutex.lock();
-        cout << "segmenting" << endl;
         segmentation();
         //cloud_mutex.unlock();
         publish_poses();
@@ -466,7 +492,7 @@ void CloudSegmenter::points_callback(const sensor_msgs::PointCloud2::ConstPtr& m
 }
 
 void CloudSegmenter::color_callback(const geometry_msgs::Point msg){
-    desired_color = pcl::PointRGB(msg.x, msg.y, msg.z);
+    desired_color = pcl::PointRGB(msg.z, msg.y, msg.x); //bgr!
     has_desired_color = true;
 
 }

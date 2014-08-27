@@ -10,7 +10,7 @@
   <include file="$(find baxter_demos)/launch/goal_object_detector.launch" />
 
   <node pkg="baxter_demos" name="servo_to_object" type="stackit.py"
-    args="--limb $(arg limb) --visualize true" required="true"/>
+    args="--limb $(arg limb) " required="true" output="screen"/>
 
   <rosparam command="load" file="$(find baxter_demos)/config/servo_to_object.yaml" />
 

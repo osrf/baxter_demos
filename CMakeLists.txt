@@ -6,6 +6,7 @@ endif(COMMAND cmake_policy)
 project(baxter_demos)
 
 set(GCC_COVERAGE_COMPILE_FLAGS "-g" )
+set(CMAKE_C_FLAGS ${GCC_COVERAGE_COMPILE_FLAGS} )
 
 find_package(OpenCV REQUIRED)
 

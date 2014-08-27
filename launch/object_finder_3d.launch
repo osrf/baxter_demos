@@ -1,6 +1,0 @@
-<launch>
-    <node pkg="baxter_demos" name="object_finder_3d" type="object_finder_3d"
-        required="true">
-    </node>
-    <rosparam param="object_finder_params" command="load" file="$(find baxter_demos)/config/object_finder_3d.yaml"/>
-</launch>

@@ -1,10 +1,13 @@
-radius: 8
+radius: 10
 filter_min: 0
 filter_max: 4
-distance_threshold: 10
-point_color_threshold: 6
-region_color_threshold: 5
-min_cluster_size: 750
+#distance_threshold: 10
+#point_color_threshold: 6
+#region_color_threshold: 5
+tolerance: 0.03
+
+min_cluster_size: 60
+max_cluster_size: 1000
 
 exclusion_padding: 0.03
 sample_size: 50

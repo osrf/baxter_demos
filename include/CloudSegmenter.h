@@ -34,6 +34,7 @@
 #include <pcl/filters/conditional_removal.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/segmentation/region_growing_rgb.h>
+#include <pcl/segmentation/extract_clusters.h>
 #include <pcl/search/search.h>
 #include <pcl/search/kdtree.h>
 #include <pcl/visualization/cloud_viewer.h>
@@ -63,6 +64,8 @@ private:
     int point_color_threshold;
     int region_color_threshold;
     int min_cluster_size;
+    int max_cluster_size;
+    double tolerance;
 
     int object_sequence;
 
@@ -70,8 +73,8 @@ private:
     bool has_cloud;
     bool segmented;
 
-    float object_side;
-    float exclusion_padding;
+    double object_side;
+    double exclusion_padding;
     int  sample_size;
 
     boost::mutex cloud_mutex;
@@ -106,8 +109,7 @@ private:
 
     sensor_msgs::PointCloud2 cloud_msg;
 
-    void visualize();
-    void visualize_old();
+    float getFloatParam(string param_name);
     void match_prev_cur_poses(vector<geometry_msgs::Pose> cur_poses,
                               vector<moveit_msgs::CollisionObject>& next_objs,
                               vector<moveit_msgs::CollisionObject>& remove_objs  );

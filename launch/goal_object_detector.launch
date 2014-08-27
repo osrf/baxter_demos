@@ -1,6 +1,6 @@
 <launch>
 
-  <node pkg="nodelet" type="nodelet" name="cloud_nodelet"  args="manager" output="screen"/>
+  <node pkg="nodelet" type="nodelet" name="cloud_nodelet"  args="manager" output="screen" />
 
     <!--TODO: options for kinect and asus -->
   <!--include file="$(find baxter_demos)/launch/freenect_nodelet.launch"/-->

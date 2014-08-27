@@ -1,5 +1,6 @@
 <!--Durrrrr how to put yaml into args for static transform publisher-->
 <launch>
+  <param name="/robot_description" textfile="$(find baxter_demos)/config/baxter.urdf"/>
 
   <node pkg="robot_state_publisher" type="robot_state_publisher" name="baxter_state_pub">  
     <remap from="joint_states" to="/robot/joint_states"/>
