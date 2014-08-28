@@ -20,8 +20,8 @@ class ObjectManager:
     # Publish collision_objects to planning_scene
 
     def callback(self, data):
-        self.planning_scene = PlanningScene()
         collision_objects = data.objects
+        self.collision_objects = collision_objects
         for obj in collision_objects:
             if obj.id in self.id_operations:
                 obj.operation = self.id_operations[obj.id]
@@ -29,18 +29,21 @@ class ObjectManager:
                 obj.operation = CollisionObject.ADD
                 self.id_operations[obj.id] = obj.operation
             print "Sending object with id "+obj.id+" to planning scene for operation" + str(obj.operation)
-            self.planning_scene.world.collision_objects.append(obj)
         self.publish()
         
     def publish(self):
-        self.pub.publish(self.planning_scene)
+        for obj in self.collision_objects:
+            self.pub.publish(obj)
+            self.rate.sleep()
+
 
     def __init__(self):
-        self.sub = rospy.Subscriber("object_tracker/collision_objects",
+        self.object_sub = rospy.Subscriber("object_tracker/collision_objects",
                                      CollisionObjectArray, self.callback)
-        self.pub = rospy.Publisher("planning_scene", PlanningScene)
+        self.pub = rospy.Publisher("/collision_object", CollisionObject)
         self.id_operations = {}
-        self.planning_scene = None
+        self.rate = rospy.Rate(100)
+        self.collision_objects = []
         
 
 config_folder = rospy.get_param('object_tracker/config_folder')
@@ -82,19 +85,19 @@ def main():
         print "Calibrating gripper"
         gripper_if.calibrate()
 
+
     obj_manager = ObjectManager()
-    while obj_manager.planning_scene is None:
+    while len(obj_manager.collision_objects) <= 0:
         rate.sleep()
-    objects = obj_manager.planning_scene.world.collision_objects
+    objects = obj_manager.collision_objects
     
     if len(objects) > 1:
-        stack_obj = objects[len(objects)-1]
-        stack_obj.primitive_poses[0] = incrementPoseMsgZ(stack_obj.primitive_poses[0], params['object_height']/2.0)
+        stack_pose = objects[len(objects)-1].primitive_poses[0]
+        stack_pose = incrementPoseMsgZ(stack_pose, params['object_height']/2.0)
         objects.pop(len(objects)-1)
     elif len(objects) == 1:
-        stack_obj = objects[0]
+        stack_pose = objects[0].primitive_poses[0]
 
-    #i = 0
     for obj in objects:
         
         pose = obj.primitive_poses[0]
@@ -105,44 +108,41 @@ def main():
         print "setting target to pose"
         # Move to the next block
         group.clear_pose_targets()
+        group.set_start_state_to_current_state()
         group.set_pose_target(pose)
-
-        # Remove object from collision matrix
 
         plan = group.plan()
 
         # is there a better way of checking this?
         plan_found = len(plan.joint_trajectory.points) > 0
-        
-        print "============ Waiting while RVIZ displays plan1..."
-        rospy.sleep(3)
-
-        group.go(wait=True)
 
         if plan_found:
+            print "============ Waiting while RVIZ displays plan1..."
+            rospy.sleep(3)
+            group.go(wait=True)
             gripper_if.close(block=True)
 
         # Move to the stacking position
         group.clear_pose_targets()
-        group.set_pose_target(stack_obj)
+        group.set_start_state_to_current_state()
+        group.set_pose_target(stack_pose)
         plan = group.plan()
         plan_found = len(plan.joint_trajectory.points) > 0
 
-        print "============ Waiting while RVIZ displays plan2..."
-        rospy.sleep(3)
-
-        group.go(wait=True)
 
         if plan_found:
+            print "============ Waiting while RVIZ displays plan2..."
+            rospy.sleep(3)
+            group.go(wait=True)
             gripper_if.open(block=True)
         
         # Get the next stack pose
-        stack_obj = incrementPoseMsgZ(pose, params['object_height'])
+        stack_pose = incrementPoseMsgZ(pose, params['object_height'])
 
         if obj.id in obj_manager.id_operations:
             obj_manager.id_operations[obj.id] = CollisionObject.ADD
+
         obj_manager.publish()
-        #i+=1
 
 if __name__ == "__main__":
     main()

@@ -24,6 +24,7 @@ find_package(catkin REQUIRED COMPONENTS
     moveit_msgs
     message_generation
     pcl_conversions
+    pcl_ros
     tf
 )
 

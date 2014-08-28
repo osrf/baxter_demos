@@ -33,6 +33,8 @@
 #include <pcl/common/transforms.h>
 #include <pcl/filters/conditional_removal.h>
 #include <pcl/filters/passthrough.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/segmentation/region_growing_rgb.h>
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/search/search.h>
@@ -66,6 +68,9 @@ private:
     int min_cluster_size;
     int max_cluster_size;
     double tolerance;
+    float leaf_size;
+    double outlier_radius;
+    int min_neighbors;
 
     int object_sequence;
 
