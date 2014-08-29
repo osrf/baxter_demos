@@ -3,16 +3,16 @@ leaf_size: 0.0075
 radius: 7
 filter_min: 0
 filter_max: 4
-distance_threshold: 7
-point_color_threshold: 3
-region_color_threshold: 5
+distance_threshold: 10
+point_color_threshold: 6
+region_color_threshold: 6
 tolerance: 0.01
 
-min_cluster_size: 20
-max_cluster_size: 1000
+min_cluster_size: 30
+max_cluster_size: 2000
 
 min_neighbors: 6
 outlier_radius: 0.008
 
-exclusion_padding: 0.01
+exclusion_padding: 0.08
 sample_size: 100

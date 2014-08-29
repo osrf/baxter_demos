@@ -51,10 +51,26 @@ using namespace std;
 
 namespace baxter_demos{
 
+Eigen::Vector3f positionToVector(geometry_msgs::Point p);
+
+const float threshold = 0.002;
+//Compare goal poses by greater magnitude from origin
+class pose_compare{
+    public:
+    bool operator()(geometry_msgs::Pose pose_a, geometry_msgs::Pose pose_b);
+    static bool position_equal(geometry_msgs::Pose pose_a, geometry_msgs::Pose pose_b){
+        return abs(pose_a.position.x - pose_b.position.x) < threshold &&
+               abs(pose_a.position.y - pose_b.position.y) < threshold &&
+               abs(pose_a.position.z - pose_b.position.z) < threshold;
+    }
+};
+
+
 typedef pcl::PointCloud<pcl::PointXYZRGB> PointColorCloud;
 typedef pair<PointColorCloud::Ptr, OrientedBoundingBox> CloudPtrBoxPair;
 typedef map<PointColorCloud::Ptr, OrientedBoundingBox> CloudPtrBoxMap;
 typedef map<string, geometry_msgs::Pose > IDPoseMap; 
+typedef map<geometry_msgs::Pose, string, pose_compare > PoseIDMap; 
 typedef map<string, moveit_msgs::CollisionObject > IDObjectMap; 
 
 class CloudSegmenter : public nodelet::Nodelet {
@@ -77,6 +93,8 @@ private:
     bool has_desired_color;
     bool has_cloud;
     bool segmented;
+
+    bool published_goals;
 
     double object_side;
     double exclusion_padding;
@@ -106,9 +124,14 @@ private:
 
     vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> cloud_ptrs;
     CloudPtrBoxMap cloud_boxes;
-    //vector<geometry_msgs::Pose> cur_poses;
-    vector<moveit_msgs::CollisionObject> prev_objs;
-    vector<moveit_msgs::CollisionObject> cur_objs;
+
+    vector<geometry_msgs::Pose> goal_poses;
+    //vector<moveit_msgs::CollisionObject> prev_diffs;
+    //vector<moveit_msgs::CollisionObject> cur_diffs;
+    IDObjectMap prev_diffs;
+    IDObjectMap cur_diffs;
+
+    IDObjectMap all_objects;
 
     tf::TransformListener tf_listener;
 
@@ -119,6 +142,8 @@ private:
                               vector<moveit_msgs::CollisionObject>& next_objs,
                               vector<moveit_msgs::CollisionObject>& remove_objs  );
     void mergeCollidingBoxes();
+    moveit_msgs::CollisionObject constructCollisionObject(geometry_msgs::Pose pose);
+    void match_objects(vector<geometry_msgs::Pose> cur_poses);
     //static void addComparison(pcl::ConditionAnd<pcl::PointXYZRGB>::Ptr range_cond, const char* channel, pcl::ComparisonOps::CompareOp op, float value);
 
 public:
