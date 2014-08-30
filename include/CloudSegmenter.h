@@ -96,7 +96,7 @@ private:
 
     bool published_goals;
 
-    double object_side;
+    float object_side;
     double exclusion_padding;
     int  sample_size;
 
@@ -114,6 +114,7 @@ private:
 
     ros::Publisher object_pub;
     ros::Publisher cloud_pub;
+    ros::Publisher goal_pub;
 
     pcl::RegionGrowingRGB<pcl::PointXYZRGB> reg;
 
@@ -145,6 +146,7 @@ private:
     moveit_msgs::CollisionObject constructCollisionObject(geometry_msgs::Pose pose);
     void match_objects(vector<geometry_msgs::Pose> cur_poses);
     //static void addComparison(pcl::ConditionAnd<pcl::PointXYZRGB>::Ptr range_cond, const char* channel, pcl::ComparisonOps::CompareOp op, float value);
+    void updateParams();
 
 public:
 

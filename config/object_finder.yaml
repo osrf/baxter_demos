@@ -18,7 +18,7 @@ thresh_max: 2000
 # Color detection
 blur: 12
 blur_max: 50
-radius: 22
+radius: 15
 radius_max: 128
 open: 4
 open_max: 15
@@ -26,9 +26,9 @@ open_max: 15
 # star
 response: 20
 response_max: 90
-projected: 3
+projected: 7
 projected_max: 30
-binarized: 3
+binarized: 6
 binarized_max: 30
 
 # Maximum number of filters to apply?

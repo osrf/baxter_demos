@@ -95,6 +95,10 @@ class VisualCommand():
         topic = "/robot/range/"+self.limb+"_hand_range/state"
         self.ir_sub = rospy.Subscriber(topic, Range, self.ir_callback)
 
+    def unsubscribe(self):
+        self.centroid_sub.unregister()
+        self.ir_sub.unregister()
+
     def command_ik(self, direction):
         """Use the Rethink IK service to figure out a desired joint position"""
         end_pose = self.limb_iface.endpoint_pose()
@@ -243,6 +247,7 @@ class VisualCommand():
 
     def ir_callback(self, data):
         self.ir_reading = data.range
+
 
         
 

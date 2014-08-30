@@ -28,6 +28,7 @@ from geometry_msgs.msg import(
     Point,
     Polygon
 )
+global picked_color
 
 node_name = "object_finder"
 config_folder = rospy.get_param('object_tracker/config_folder')
@@ -67,7 +68,7 @@ class CameraSubscriber:
         self.cur_img = img
 
 class ObjectFinder(CameraSubscriber):
-    def __init__(self, method, point):
+    def __init__(self, method, point, color):
 
         self.cv_wait = params['rate']
 
@@ -80,24 +81,37 @@ class ObjectFinder(CameraSubscriber):
         cv2.createTrackbar("threshold 2", edge_win, params['thresh2'],
                            params['thresh_max'], nothing)
 
+        cv2.createTrackbar("blur", processed_win, params['blur'],
+                           params['blur_max'], nothing)
+
+        self.houghArgs = [params['rho'], params['theta'], params['threshold'],
+                          params['minLineLength'], params['maxLineGap']]
+
         if method == 'edge':
            self.detectFunction = self.edgeDetect
 
         elif method == 'color':
-            cv2.createTrackbar("blur", processed_win, params['blur'],
-                               params['blur_max'], nothing)
             cv2.createTrackbar("radius", processed_win, params['radius'],
                                params['radius_max'], nothing)
             cv2.createTrackbar("open", processed_win, params['open'],
                                params['open_max'], nothing)
             self.detectFunction = self.colorDetect
-            self.color = None
+            self.color = color
+            if self.color is not None:
+                print "Got picked color:", self.color
 
-            self.houghArgs = [params['rho'], params['theta'], params['threshold'],
-                              params['minLineLength'], params['maxLineGap']]
+            if point is not None:
+                self.point = point
+            elif point is None and color is None:
+                raise Exception("Not enough information given to object_finder.py")
 
         elif method == 'star':
-            
+
+            self.color = None 
+            cv2.createTrackbar("radius", processed_win, params['radius'],
+                               params['radius_max'], nothing)
+            cv2.createTrackbar("open", processed_win, params['open'],
+                               params['open_max'], nothing)
             cv2.createTrackbar("Response threshold", processed_win,
                                 params['response'], params['response_max'],
                                 self.updateDetector)
@@ -108,9 +122,9 @@ class ObjectFinder(CameraSubscriber):
                                 params['binarized'], params['binarized_max'],
                                 self.updateDetector)
             self.detector = cv2.StarDetector(params['maxSize'],
-                                    params['responseThreshold'],
-                                    params['lineThresholdProjected'],
-                                    params['lineThresholdBinarized']) 
+                                    params['response'],
+                                    params['projected'],
+                                    params['binarized']) 
             self.detectFunction = self.starDetect
 
         elif method == 'watershed':
@@ -118,7 +132,7 @@ class ObjectFinder(CameraSubscriber):
             cv2.createTrackbar("blur", processed_win, params['blur'],
                                params['blur_max'], nothing)
 
-        self.point = point
+
         self.centroids = [] 
         self.axes = []
         #self.prev_axis = None
@@ -135,7 +149,7 @@ class ObjectFinder(CameraSubscriber):
     def updateGamma(self, g):
         self.gamma = float(g)/100.0
 
-    def updateDetector(self):
+    def updateDetector(self, args):
         maxSize = params['maxSize']
         responseThreshold = cv2.getTrackbarPos("Response threshold",
                                                 processed_win)
@@ -177,7 +191,6 @@ class ObjectFinder(CameraSubscriber):
         self.img = self.simpleFilter()
         self.processed = self.detectFunction(self.img)
         
-        # Find the contour associated with self.point
         contour_img = self.processed.copy()
         contours, hierarchy = cv2.findContours(contour_img, cv2.RETR_LIST,
                                                cv2.CHAIN_APPROX_SIMPLE)
@@ -230,7 +243,8 @@ class ObjectFinder(CameraSubscriber):
             if self.cur_img is None:
                 return
             blur_img = common.blurImage(self.cur_img, blur_radius)
-            self.color = blur_img[self.point[1], self.point[0]]
+            if self.color is None:
+                self.color = blur_img[self.point[1], self.point[0]]
             self.axes = []
 
     def getObjectAxes(self, img, contour):
@@ -284,59 +298,26 @@ class ObjectFinder(CameraSubscriber):
         return axis
         
     def starDetect(self, img):
+        #if self.color is None:
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         keypoints = self.detector.detect(gray)
         #Render the key points
         n = len(keypoints)
         if n == 0:
-            return
+            print "no key points found"
+            return gray
+        # Average the color of the keypoints
+        avg = numpy.zeros(4)
 
-        # Now what to do with the key points? How to get thresholded image?
-        # Put the keypoints in a np.f32 matrix, one column = one point
-        samples = numpy.array( [point.pt for point in keypoints] )
-        samples = numpy.float32(samples)
+        blur_radius = cv2.getTrackbarPos("blur", processed_win)
+        blur_img = common.blurImage(img, blur_radius)
 
-        # Cluster by size, determining the number of clusters by their compactness
-        delta = params['delta']
-        prev_compactness = sys.maxint
-        for k in range(1, max(2, int(n/3))):
-            print "Trying k-means with k="+str(k)+", n="+str(n)
-            max_iter = params['max_iter']
-            epsilon = params['epsilon']
-            attempts = params['attempts']
-            compactness, labels, centers = cv2.kmeans(samples, k,
-                                 (cv2.TERM_CRITERIA_EPS +
-                                 cv2.TERM_CRITERIA_MAX_ITER, max_iter, epsilon),
-                                 attempts, cv2.KMEANS_RANDOM_CENTERS)
-            if prev_compactness - compactness < delta:
-                if k > 1:
-                    k-=1
-                break
-            prev_compactness = compactness
-        # Put the output of k-means into a convenient dictionary
-        labels = labels.flatten()
-        polys = {} #Dictionary to group the polygons
-        for i in range(labels.shape[0]):
-            polys.setdefault(labels[i], []).append(samples[i, :])
-        
-        #set this guy to all black
-        gray[:] = 0 
-        # Draw polygon around clusters
-        # load these values from file because calculating this is godawful
-        phi = (1.0+sqrt(5))/2.0
-        hues = [ numpy.array([floor( (i*phi - floor(i*phi)) * 179), 255, 255])
-                 for i in range(0, 100, 10)]
-        
-        colors = [tuple(cv2.cvtColor(hue.reshape((1, 1, 3)).astype(numpy.uint8),
-                  cv2.COLOR_HSV2BGR).flatten().tolist()) for hue in hues]
-        for i in polys.keys():
-            points = numpy.array(polys[i]).astype(int)
+        for point in keypoints:
+            color = blur_img[point.pt[1], point.pt[0]]
+            avg+=color/float(n)
 
-            #Draw the convex hull of the points in the processed image
-            hull = cv2.convexHull(points)
-            hull = hull.reshape((hull.shape[0], 1, 2))
-            cv2.fillConvexPoly(gray, hull, color=255)
-        return gray
+        self.color = avg
+        return self.colorDetect(img)
 
     def watershedDetect(self, img):
         # Do some preprocessing
@@ -395,9 +376,10 @@ class ObjectFinder(CameraSubscriber):
         open_radius = cv2.getTrackbarPos("open", processed_win)
         blur_img = common.blurImage(img, blur_radius)
 
-        if self.color == None:
+        if self.color == None and self.point is not None:
             self.color = blur_img[self.point[1], self.point[0]]
-
+            print "segmenting color:", self.color
+        
         return common.colorSegmentation(blur_img, blur_radius, radius,
                                         open_radius, self.color)
 
@@ -422,6 +404,8 @@ def main():
                         required=False, help='which detection method to use')
     parser.add_argument('-t', '--topic', required=False,
                         help='which image topic to listen on')
+    parser.add_argument('-p', '--pick_point', choices=['true', 'false'], required=False,
+                        help='listen for a color topic or select one in the frame')
 
     args = parser.parse_args(rospy.myargv()[1:])
     if args.limb is None:
@@ -432,6 +416,8 @@ def main():
         args.method = 'color'
     if args.topic is None:
         args.topic = "/cameras/"+limb+"_hand_camera/image"
+    if args.pick_point is None:
+        args.pick_point=True
 
     print args
     print("Initializing node... ")
@@ -452,15 +438,17 @@ def main():
     cam = CameraSubscriber()
     cam.subscribe(args.topic)
 
-    rospy.loginfo( "Click on the object you would like to track, then press\
-                    any key to continue." )
-    ml = common.MouseListener()
-
+    point = None
+    global picked_color
+    picked_color = None
     if "object_finder_test" in args.topic:
         # Hardcoded position
         point = (322, 141)
-        
-    else:
+    elif args.pick_point and args.method == "color":
+
+        rospy.loginfo( "Click on the object you would like to track, then press\
+                        any key to continue." )
+        ml = common.MouseListener()
         cv2.setMouseCallback(raw_win, ml.onMouse)
         while not ml.done:
             if cam.cur_img is not None:
@@ -468,6 +456,17 @@ def main():
 
             cv2.waitKey(cam.cv_wait)
         point = (ml.x_clicked, ml.y_clicked)
+    elif args.method == "color":
+        # Wait on msg from /object_tracker/picked_color
+        def color_callback(data):
+            global picked_color
+            picked_color = numpy.array((int(data.z), int(data.y), int(data.x))) # b, g, r
+        color_sub = rospy.Subscriber("/object_tracker/picked_color", Point, color_callback)
+        rate = rospy.Rate(cam.cv_wait)
+        while picked_color is None and not rospy.is_shutdown():
+            rate.sleep()
+        
+
     detectMethod = None
 
     cam.unsubscribe()
@@ -477,7 +476,7 @@ def main():
         cv2.imshow(processed_win, numpy.zeros((cam.cur_img.shape)))
 
     print "Starting image processor"
-    imgproc = ObjectFinder(args.method, point)
+    imgproc = ObjectFinder(args.method, point, picked_color)
     imgproc.subscribe(args.topic)
     imgproc.publish(limb)
     cv2.namedWindow(edge_win)

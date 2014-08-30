@@ -6,7 +6,7 @@
     <remap from="joint_states" to="/robot/joint_states"/>
   </node>
 
-  <node pkg="tf" type="static_transform_publisher" name="base_cam_broadcaster" args="0.108492675003, 0.025120406408, 0.477354689109, -0.031881432712, 0.450723031614, 0.0252073287829, 0.891738141831 base camera_link 100"/>
+  <node pkg="tf" type="static_transform_publisher" name="base_cam_broadcaster" args="0.21137702435, 0.0884413801763, 0.532847887486, -0.0181647233848, 0.540234740271, -0.0248631559153, 0.840950825974 base camera_link 100"/>
 
 
 </launch>

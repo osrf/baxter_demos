@@ -26,9 +26,9 @@ bool CloudSegmenter::isPointWithinDesiredRange(const pcl::PointRGB input_pt,
     pcl::PointXYZRGBtoXYZHSV(input_xyz, input_hsv);
     pcl::PointXYZRGBtoXYZHSV(desired_xyz, desired_hsv);
     
-    if ( abs(input_hsv.h - desired_hsv.h) < radius &&
-         abs(input_hsv.s - desired_hsv.s) < radius &&
-         abs(input_hsv.v - desired_hsv.v) < radius){
+    if ( abs(((int) input_hsv.h) - ((int) desired_hsv.h)) < radius && //this is not lisp
+         abs(((int) input_hsv.s) - ((int) desired_hsv.s)) < radius &&
+         abs(((int) input_hsv.v) - ((int) desired_hsv.v)) < radius){
         return true;
     }
     return false;
@@ -55,12 +55,9 @@ CloudSegmenter::CloudSegmenter() : has_cloud(false), has_desired_color(false), s
     cloud = PointColorCloud::Ptr(new PointColorCloud);
 }
 
-
-void CloudSegmenter::onInit(){
+void CloudSegmenter::updateParams(){
     //load params from yaml
-
-    //Create visualization thread
-    n = getNodeHandle();
+    double object_height;
 
     n.getParam("radius", radius);
     n.getParam("filter_min", filter_min);
@@ -75,11 +72,19 @@ void CloudSegmenter::onInit(){
     leaf_size = (float) l;
     n.getParam("exclusion_padding", exclusion_padding);
     n.getParam("tolerance", tolerance);
-    n.getParam("object_height", object_side);
+    n.getParam("object_height", object_height);
     n.getParam("min_neighbors", min_neighbors);
     n.getParam("outlier_radius", outlier_radius);
     
     n.getParam("sample_size", sample_size);
+
+    object_side =(float) (object_height + exclusion_padding);
+
+}
+
+void CloudSegmenter::onInit(){
+    n = getNodeHandle();
+    updateParams();
 
     has_desired_color = false;
     has_cloud = false;
@@ -96,8 +101,10 @@ void CloudSegmenter::onInit(){
     
     object_pub = n.advertise<CollisionObjectArray>(
                         "/object_tracker/collision_objects", 100);
+    //object_pub = n.advertise<moveit_msgs::CollisionObject>("/collision_object", 100);
+    goal_pub = n.advertise<geometry_msgs::PoseArray>("/object_tracker/right/goal_poses", 100);
 
-    cloud_pub = n.advertise<sensor_msgs::PointCloud2>("/modified_points", 200);
+    //cloud_pub = n.advertise<sensor_msgs::PointCloud2>("/modified_points", 200);
 
     object_sequence = 0;
     cout << "finished initialization" << endl;
@@ -121,6 +128,11 @@ moveit_msgs::CollisionObject CloudSegmenter::constructCollisionObject(geometry_m
     primitive.dimensions[2] = object_side;
     new_obj.primitives.push_back(primitive);
     new_obj.primitive_poses.push_back(pose);
+
+    /*shape_msgs::Mesh mesh;
+    new_obj.meshes.push_back(mesh);
+    new_obj.mesh_poses.push_back(pose);*/
+
     new_obj.operation = moveit_msgs::CollisionObject::ADD;
 
     new_obj.header.frame_id = "/base";
@@ -131,6 +143,7 @@ moveit_msgs::CollisionObject CloudSegmenter::constructCollisionObject(geometry_m
 }
 
 void CloudSegmenter::match_objects(vector<geometry_msgs::Pose> cur_poses){
+//this matching between frames business is super buggy
     prev_diffs = cur_diffs;
     cur_diffs.clear();
 
@@ -155,8 +168,7 @@ void CloudSegmenter::match_objects(vector<geometry_msgs::Pose> cur_poses){
                     Eigen::Vector3f map_point = positionToVector(matched_objects[old_object.id].position);
                     float dist_j = (old_point - map_point).norm();
                     if( dist_i < dist_j ){
-                        matched_objects[old_object.id] = cur_poses[i];
-                    }
+                        matched_objects[old_object.id] = cur_poses[i]; }
                 }
             }
         }
@@ -336,14 +348,21 @@ void CloudSegmenter:: publish_poses(){
         if(cur_diffs_vec.empty()){
             cout << "Oops, no objects found!" << endl;
         }
-        for(int i = 0; i < cur_diffs_vec.size(); i++){
+        /*for(int i = 0; i < cur_diffs_vec.size(); i++){
             cur_diffs_vec[i].header.stamp = ros::Time::now();
-        }
+            object_pub.publish(cur_diffs_vec[i]);
+        }*/
+        
         object_pub.publish(msg);
+
         published_goals=true;
     }
 
-    if(has_cloud){
+    geometry_msgs::PoseArray pose_msg;
+    pose_msg.poses = goal_poses;
+    goal_pub.publish(pose_msg);
+
+    /*if(has_cloud){
         if(!goal_poses.empty()){
             exclude_all_objects(goal_poses);
         }
@@ -353,7 +372,7 @@ void CloudSegmenter:: publish_poses(){
         pcl_ros::transformPointCloud("/base", cloud_msg, cloud_msg, tf_listener);
         //cloud_msg.header.stamp = ros::Time::now();
         cloud_pub.publish(cloud_msg);
-    }
+    }*/
 }
 
 PointColorCloud::ConstPtr CloudSegmenter::getCloudPtr(){
@@ -469,6 +488,18 @@ void CloudSegmenter:: segmentation(){
         pcl::PointXYZRGB avg_xyz;
         rgb_centroid.get(avg_xyz);
         pcl::PointRGB avg(avg_xyz.b, avg_xyz.g, avg_xyz.r);
+        /*float n_f = cluster.indices.size();
+        float r = 0; float g = 0; float b = 0;
+        // TODO: this is a major bottleneck. improve performance
+        for (int j = 0; j < n; j++){
+            pcl::PointRGB color = getCloudColorAt(cluster.indices[j]);
+            r += (float) color.r; //float typecasts suck
+            g += (float) color.g;
+            b += (float) color.b;
+        }
+        r /= n_f; g /= n_f; b /= n_f;
+        cout << "Average color: " << r << ", " << g << ", " << b << endl;
+        pcl::PointRGB avg((unsigned char) b, (unsigned char) g, (unsigned char) r);*/
 
         cout << "Average color: " << (int) avg.r << ", " << (int) avg.g <<
                 ", " << (int) avg.b << endl;
@@ -483,14 +514,14 @@ void CloudSegmenter:: segmentation(){
             }
         }
     }
-    for(int i = 0; i < (*indices).size(); i++){
+    /*for(int i = 0; i < (*indices).size(); i++){
         if(goal_indices.find(indices->at(i)) == goal_indices.end() ){
             obstacle_points.push_back( cloud->at(indices->at(i)));
         }
     }
     cout<< "Modified point cloud has " << obstacle_points.size() << " points" << endl;
 
-    obstacle_cloud = obstacle_points.makeShared();
+    obstacle_cloud = obstacle_points.makeShared();*/
     //pcl::toROSMsg(*obstacle_cloud, cloud_msg);
 
     cout << "Clusters found: " << cloud_ptrs.size() << endl;
@@ -505,7 +536,7 @@ void CloudSegmenter:: segmentation(){
     for (int i = 0; i < cloud_ptrs.size(); i++){
         OBBs.push_back(getOBBForCloud(cloud_ptrs[i]));
         //cout << "OBB position: " << OBBs.back().get_position() << endl;
-        OBBs.back().set_sides( object_side, object_side, object_side);
+        //OBBs.back().set_sides( object_side, object_side, object_side);
         cloud_boxes.insert(CloudPtrBoxPair(cloud_ptrs[i], OBBs.back()));
     }
 
@@ -549,12 +580,13 @@ void CloudSegmenter:: segmentation(){
     //match_objects(cur_poses);
     if(!published_goals){
         match_objects(cur_poses);
-        goal_poses = cur_poses;
     }
+    goal_poses = cur_poses;
 
 }
 
 void CloudSegmenter::points_callback(const sensor_msgs::PointCloud2::ConstPtr& msg){
+    updateParams();
     //cout << "got points" << endl;
     frame_id = msg->header.frame_id;
     // Members: float x, y, z; uint32_t rgba
