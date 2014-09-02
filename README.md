@@ -4,12 +4,14 @@
 
 ####Keyboard teleop demos
 ```
-rosrun baxter_demos ee_position_keyboard.py```
+rosrun baxter_demos ee_position_keyboard.py
+```
 
 Teleoperate the robot’s end effectors through Cartesian space. Press ‘?’ in the terminal you launched it from to view the possible commands.
 
 ```
-roslaunch baxter_demos ee_position_joystick joystick:=logitech```
+roslaunch baxter_demos ee_position_joystick joystick:=logitech
+```
 
 Teleoperate the robot’s end effectors through Cartesian space using a joystick/gamepad. Visit http://wiki.ros.org/joy for instructions on configuring your device. 
 
@@ -35,12 +37,14 @@ A simple object pick and place demo. Make sure Baxter’s hand camera can see th
 
 ####3D Camera Calibration
 ```
-roslaunch baxter_demos track_ar_tag.launch```
+roslaunch baxter_demos track_ar_tag.launch
+```
 
 Run a node from ar_track_alvar to give the pose of an AR tag in the camera scene. Edit this script with the correct image topic name and dimensions of the marker you are trying to track. See http://wiki.ros.org/ar_track_alvar for more information. To run this node in hydro or higher, you will need to install ar_track_alvar from source. I found that the default size suggested in ar_track_alvar gives very noisy results for an Asus Xtion. However, pose tracking was robust for a marker with a side of nearly 12 cm.
 
 ```
-roslaunch baxter_demos get_ar_calib.py```
+roslaunch baxter_demos get_ar_calib.py
+```
 
 Runs track_ar_tag and an additional node to calculate the transformation between Baxter’s base frame and the camera. To get an accurate extrinsic calibration, you need to carefully measure the transformation between the AR marker and one of Baxter’s coordinate frames and edit `$(baxter_demos)/config/ar_calib.yaml` with appropriate values.
 
