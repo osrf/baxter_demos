@@ -44,6 +44,12 @@ def incrementPoseZ(pose, inc):
     pose = numpy.concatenate( (pos, pose[3:7]) )
     return pose.tolist()
 
+def incrementPoseMsg(pose, inc):
+    pose.position.x += inc[0]
+    pose.position.y += inc[0]
+    pose.position.z += inc[0]
+    return pose
+
 def incrementPoseMsgZ(pose, inc):
     pose.position.z += inc
     return pose

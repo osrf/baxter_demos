@@ -9,7 +9,7 @@ import cv2
 import tf
 import moveit_commander
 import moveit_msgs.msg
-from moveit_msgs.msg import CollisionObject, PlanningScene
+from moveit_msgs.msg import AttachedCollisionObject, CollisionObject, PlanningScene
 from baxter_demos.msg import CollisionObjectArray
 from baxter_demos.msg import BlobInfo, BlobInfoArray
 import geometry_msgs.msg
@@ -36,31 +36,37 @@ class ObjectManager:
 
         for obj in collision_objects:
             self.id_operations[obj.id] = obj.operation
+        if not self.published:
+            self.publish_all()
+            self.published = True
 
-        """for obj in collision_objects:
-            if obj.id in self.id_operations:
-                obj.operation = self.id_operations[obj.id]
-            else:
-                obj.operation = CollisionObject.ADD
-                self.id_operations[obj.id] = obj.operation
-            print "Sending object with id "+obj.id+" to planning scene for operation"
-                 + str(obj.operation)"""
-        self.publish()
+    def publish(self, obj):
+        obj.operation = self.id_operations[obj.id]
+        self.pub.publish(obj)
+
         
-    def publish(self):
+    def publish_all(self):
         for obj in self.collision_objects:
             obj.operation = self.id_operations[obj.id]
             self.pub.publish(obj)
-            self.rate.sleep()
+
+    def publish_attached(self, attached_obj, side):
+        attached_obj.operation = CollisionObject.ADD
+        msg = AttachedCollisionObject()
+        msg.object = attached_obj
+        msg.link_name = side+"_gripper" #Just so the TF is right
+        msg.touch_links = [side+"_gripper_base", side+"_hand_camera", side+"_hand_range", "octomap"]
+        self.attached_pub.publish(msg)
 
 
     def __init__(self):
         self.object_sub = rospy.Subscriber("object_tracker/collision_objects",
                                      CollisionObjectArray, self.callback)
         self.pub = rospy.Publisher("/collision_object", CollisionObject)
+        self.attached_pub = rospy.Publisher("/attached_collision_object", AttachedCollisionObject)
         self.id_operations = {}
-        self.rate = rospy.Rate(100)
         self.collision_objects = []
+        self.published = False
         
 
 config_folder = rospy.get_param('object_tracker/config_folder')
@@ -76,28 +82,6 @@ def projectPose(pose):
                                  -0.0180992582839, -0.0084573527776)
     
     return pose
-    """z = numpy.array([0, 0, -1]).reshape((3, 1))
-    q = (pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w)
-    R = tf.transformations.quaternion_matrix(q)
-    # Check which column of the matrix is closest to Z
-    col_i = min( [( numpy.linalg.norm( R[i, :3]- z), i) for i in range(3) ] )[1]
-    u = R[(col_i+1) % 3, :3]
-    v = R[(col_i-1) % 3, :3]
-    u[2] = 0
-    v[2] = 0
-    u /= numpy.linalg.norm(u)
-    v /= numpy.linalg.norm(v)
-    # Orthogonalize with Gram-Schmidt
-    proj_uv = u.dot(v)/u.dot(u) * u
-    v = v - proj_uv
-    v /= numpy.linalg.norm(v)
-
-    # Now form a new quaternion and return it
-    R2 = numpy.hstack( (z, u.reshape((3, 1)), v.reshape((3, 1)), numpy.zeros(3).reshape((3,1)) ) )
-    R2 = numpy.vstack( (R2, numpy.array( (0, 0, 0, 1) )) )
-    print R2
-    pose.orientation = geometry_msgs.msg.Quaternion(*tf.transformations.quaternion_from_matrix(R2))
-    return pose"""
 
 def main():
     arg_fmt = argparse.RawDescriptionHelpFormatter
@@ -113,8 +97,8 @@ def main():
     limb = args.limb
 
     rospy.init_node('stackit')
-    iksvc, ns = ik_command.connect_service(limb)
 
+    iksvc, ns = ik_command.connect_service(limb)
     moveit_commander.roscpp_initialize(sys.argv)
 
     rate = rospy.Rate(1)
@@ -162,7 +146,7 @@ def main():
         print "Modified pose:", pose
         if obj.id in obj_manager.id_operations:
             obj_manager.id_operations[obj.id] = CollisionObject.REMOVE 
-        obj_manager.publish()
+        obj_manager.publish(obj)
 
         print "setting target to pose"
         # Move to the next block
@@ -209,7 +193,15 @@ def main():
             vc.unsubscribe()
             imgproc.unsubscribe()
 
-            #gripper_if.close(block=True)
+            print "Adding attached message"
+            #Add attached message
+            obj.primitive_poses[0] = incrementPoseMsgZ(obj.primitive_poses[0], -2*params['object_height']) #this is in the base frame...?
+            #obj_manager.publish_attached(obj, limb)
+            group.attach_object(obj.id, limb+"_gripper")
+            # Disable collisions between gripper and octomap (risky business)
+            # Carefully rise away from the object before we plan another path
+            ik_command.service_request_pose(iksvc, pose, limb)
+            
         else:
             print "Unable to plan path"
             # what to do?
@@ -226,9 +218,16 @@ def main():
             #rospy.sleep(3)
             group.go(wait=True)
             gripper_if.open(block=True)
+            #obj.operation = CollisionObject.REMOVE
+            #obj_manager.publish(obj)
+            group.detach_object(obj.id)
+            # Carefully rise away from the object before we plan another path
+            pose = incrementPoseMsgZ(stack_pose, params['object_height'])
+            ik_command.service_request_pose(iksvc, pose, limb)
+            
         
         # Get the next stack pose
-        stack_pose = incrementPoseMsgZ(pose, params['object_height'])
+        stack_pose = incrementPoseMsgZ(stack_pose, params['object_height'])
 
         """if obj.id in obj_manager.id_operations:
             obj_manager.id_operations[obj.id] = CollisionObject.ADD

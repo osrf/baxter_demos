@@ -27,18 +27,23 @@ def service_request_velocity(iksvc, vel_vec, side):
     hdr = Header(stamp=rospy.Time.now(), frame_id='base')
 
 
-def service_request(iksvc, desired_p, side, blocking=False):
+def service_request(iksvc, desired_p, side, blocking=True):
+
+    hdr = Header(stamp=rospy.Time.now(), frame_id='base')
+    pose = Pose(position=Point(x=desired_p[0], y=desired_p[1], z=desired_p[2]),
+                orientation = Quaternion(x=desired_p[3], y=desired_p[4], z=desired_p[5], w=desired_p[6]))
+            
+    return service_request_pose(iksvc, pose, side, blocking)
+
+def service_request_pose(iksvc, raw_pose, side, blocking=True):
+    
     ns = "ExternalTools/"+side+"/PositionKinematicsNode/IKService"
     ikreq = SolvePositionIKRequest()
     limb = baxter_interface.Limb(side)
     hdr = Header(stamp=rospy.Time.now(), frame_id='base')
-    pose = { side : PoseStamped(
-                header = hdr,
-                pose = Pose(position=Point(x=desired_p[0], y=desired_p[1], z=desired_p[2]),
-                orientation = Quaternion(x=desired_p[3], y=desired_p[4], z=desired_p[5], w=desired_p[6]))
-            ) }
-
-    ikreq.pose_stamp.append(pose[side])
+    pose_stamped = PoseStamped( header = hdr, pose = raw_pose )
+    
+    ikreq.pose_stamp.append(pose_stamped)
     try:
         rospy.wait_for_service(ns, 5.0)
         resp = iksvc(ikreq)
@@ -57,4 +62,3 @@ def service_request(iksvc, desired_p, side, blocking=False):
         #How to recover from this
         print "Invalid position requested"
         return
-

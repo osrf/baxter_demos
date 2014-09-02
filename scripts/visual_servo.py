@@ -164,7 +164,7 @@ class VisualCommand():
             direction[2] = 0
         
         direction *= self.inc/ numpy.linalg.norm(direction)
-        print direction
+        #print direction
 
         self.command_ik(direction)
 
@@ -236,13 +236,13 @@ class VisualCommand():
 
         self.centroid = numpy.array(centroid)
 
-        print axis.points[0]
+        #print axis.points[0]
 
         def unmap(points):
             return [points.x, points.y]
         self.axis = numpy.concatenate( (numpy.array( unmap(axis.points[0]) ), numpy.array( unmap(axis.points[1])) ) )
 
-        print self.axis
+        #print self.axis
         self.visual_servo()
 
     def ir_callback(self, data):
