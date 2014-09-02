@@ -1,7 +1,7 @@
 <launch>
 
   <arg name="limb"     default="right"/>
-  <arg name="method"   default="star"/>
+  <arg name="method"   default="color"/>
   <arg name="folder"   default="$(find baxter_demos)/assets/"/>
   <include file="$(find baxter_demos)/launch/object_finder.launch"/>
 

@@ -8,15 +8,38 @@ import numpy
 import cv2
 import tf
 import moveit_commander
-import moveit_msgs.msg
-from moveit_msgs.msg import AttachedCollisionObject, CollisionObject, PlanningScene
-from baxter_demos.msg import CollisionObjectArray
-from baxter_demos.msg import BlobInfo, BlobInfoArray
-import geometry_msgs.msg
-from geometry_msgs.msg import(
-    Point,
-    Polygon, Quaternion, Pose
+
+from std_msgs.msg import Header
+
+from moveit_msgs.msg import (
+    AttachedCollisionObject,
+    CollisionObject,
+    PlanningScene,
+    Grasp,
+    GripperTranslation,
 )
+
+from trajectory_msgs.msg import(
+    JointTrajectory,
+    JointTrajectoryPoint
+)
+
+from baxter_demos.msg import (
+    CollisionObjectArray,
+    BlobInfo,
+    BlobInfoArray
+)
+
+from geometry_msgs.msg import (
+    Point,
+    Polygon,
+    Pose,
+    PoseStamped,
+    Quaternion,
+    Vector3,
+    Vector3Stamped
+)
+
 import baxter_interface
 from baxter_interface import CHECK_VERSION
 import yaml
@@ -54,7 +77,7 @@ class ObjectManager:
         attached_obj.operation = CollisionObject.ADD
         msg = AttachedCollisionObject()
         msg.object = attached_obj
-        msg.link_name = side+"_gripper" #Just so the TF is right
+        msg.link_name = side+"_gripper" 
         msg.touch_links = [side+"_gripper_base", side+"_hand_camera", side+"_hand_range", "octomap"]
         self.attached_pub.publish(msg)
 
@@ -78,7 +101,7 @@ with open(config_folder+'servo_to_object.yaml', 'r') as f:
    Want the gripper to point downwards (z=(0, 0, -1))"""
 # Violates orientation constraint for gripper
 def projectPose(pose):
-    pose.orientation = geometry_msgs.msg.Quaternion(0.6509160466, 0.758886809948,
+    pose.orientation = Quaternion(0.6509160466, 0.758886809948,
                                  -0.0180992582839, -0.0084573527776)
     
     return pose
@@ -123,14 +146,16 @@ def main():
     while len(obj_manager.collision_objects) <= 0:
         rate.sleep()
     objects = obj_manager.collision_objects
+
+    object_height = params['object_height']
     
     """if len(objects) > 1:
         stack_pose = projectPose(objects[len(objects)-1].primitive_poses[0])
-        stack_pose = incrementPoseMsgZ(stack_pose, params['object_height']*2.0)
+        stack_pose = incrementPoseMsgZ(stack_pose, object_height*2.0)
         objects.pop(len(objects)-1)
     elif len(objects) == 1:
         stack_pose = projectPose(objects[0].primitive_poses[0])"""
-    stack_pose = Pose(position=Point(0.593, -0.212, params['object_height']-0.130),
+    stack_pose = Pose(position=Point(0.593, -0.212, object_height-0.130),
                       orientation=Quaternion(0.6509160466, 0.758886809948,
                                  -0.0180992582839, -0.0084573527776) )
 
@@ -139,14 +164,20 @@ def main():
     cv2.namedWindow(processed_win)
     #cv2.namedWindow(raw_win)
 
+
     for obj in objects:
+        obj_pose = obj.primitive_poses[0]
+
+        #group.pick(obj.id)
+        #group.place(obj.id, stack_pose)
+
         print "Got pose:", obj.primitive_poses[0]
         pose = projectPose(obj.primitive_poses[0])
-        pose = incrementPoseMsgZ(pose, params['object_height']*2)
+        pose = incrementPoseMsgZ(pose, object_height*2)
         print "Modified pose:", pose
-        if obj.id in obj_manager.id_operations:
-            obj_manager.id_operations[obj.id] = CollisionObject.REMOVE 
-        obj_manager.publish(obj)
+        #if obj.id in obj_manager.id_operations:
+        #    obj_manager.id_operations[obj.id] = CollisionObject.REMOVE 
+        #obj_manager.publish(obj)
 
         print "setting target to pose"
         # Move to the next block
@@ -195,15 +226,16 @@ def main():
 
             print "Adding attached message"
             #Add attached message
-            obj.primitive_poses[0] = incrementPoseMsgZ(obj.primitive_poses[0], -2*params['object_height']) #this is in the base frame...?
+            obj.primitive_poses[0] = incrementPoseMsgZ(obj.primitive_poses[0], -2*object_height) #this is in the base frame...?
             #obj_manager.publish_attached(obj, limb)
             group.attach_object(obj.id, limb+"_gripper")
             # Disable collisions between gripper and octomap (risky business)
             # Carefully rise away from the object before we plan another path
-            ik_command.service_request_pose(iksvc, pose, limb)
+            ik_command.service_request_pose(iksvc, pose, limb, blocking = True)
             
         else:
             print "Unable to plan path"
+            continue
             # what to do?
 
         # Move to the stacking position
@@ -222,17 +254,21 @@ def main():
             #obj_manager.publish(obj)
             group.detach_object(obj.id)
             # Carefully rise away from the object before we plan another path
-            pose = incrementPoseMsgZ(stack_pose, params['object_height'])
-            ik_command.service_request_pose(iksvc, pose, limb)
+            pose = incrementPoseMsgZ(stack_pose, object_height)
+            ik_command.service_request_pose(iksvc, pose, limb, blocking = True)
             
         
         # Get the next stack pose
-        stack_pose = incrementPoseMsgZ(stack_pose, params['object_height'])
+        stack_pose = incrementPoseMsgZ(stack_pose, object_height)
 
         """if obj.id in obj_manager.id_operations:
             obj_manager.id_operations[obj.id] = CollisionObject.ADD
 
         obj_manager.publish()"""
+    for obj in objects:
+        obj.operation = CollisionObject.REMOVE
+        obj_manager.publish(obj)
+
 
 if __name__ == "__main__":
     main()

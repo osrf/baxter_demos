@@ -94,14 +94,18 @@ def main():
     while not buttonpress.pressed:
         rospy.sleep(0.5)
     
-    points.append( buttonpress.getButtonPress(limb, limbInterface, traj))
+    points.append( buttonpress.getButtonPressTraj(limb, limbInterface, traj))
     print "Got first position:"
     print points[0]
 
     buttonpress.pressed = False
 
     common.send_image(filenames[1])
-    points.append( getButtonPress(buttonpress))
+
+    while not buttonpress.pressed:
+        rospy.sleep(0.5)
+    
+    points.append( buttonpress.getButtonPressTraj(limb, limbInterface, traj))
     print "Got second position:"
     print points[1]
 

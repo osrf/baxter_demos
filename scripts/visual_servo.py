@@ -89,7 +89,7 @@ class VisualCommand():
         self.pub_rate = rospy.Rate(params['rate'])
 
     def subscribe(self):
-        topic = "object_tracker/"+self.limb+"/centroid"
+        topic = "object_tracker/blob_info"
         self.centroid_sub = rospy.Subscriber(topic, BlobInfoArray,
                                              self.centroid_callback)
         topic = "/robot/range/"+self.limb+"_hand_range/state"
@@ -105,13 +105,13 @@ class VisualCommand():
         current_p = numpy.array(end_pose['position']+end_pose['orientation']) 
         direction = numpy.concatenate((direction, numpy.zeros(4)))
         desired_p = current_p + direction
-        ik_command.service_request(self.iksvc, desired_p, self.limb)
+        ik_command.service_request(self.iksvc, desired_p, self.limb, blocking=False)
 
     def command_ik_pose(self, direction):
         end_pose = self.limb_iface.endpoint_pose()
         current_p = numpy.array(end_pose['position']+end_pose['orientation']) 
         desired_p = current_p + direction
-        ik_command.service_request(self.iksvc, desired_p, self.limb)
+        ik_command.service_request(self.iksvc, desired_p, self.limb, blocking=False)
 
     def wait_centroid(self):
         pass

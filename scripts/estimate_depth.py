@@ -59,7 +59,7 @@ class DepthEstimator:
 
 
     def subscribe(self):
-        topic = "object_tracker/"+self.limb+"/centroid"
+        topic = "object_tracker/blob_info"
         self.centroid_sub = rospy.Subscriber(topic, BlobInfoArray, self.centroid_callback)
         topic = "/robot/range/"+self.limb+"_hand_range/state"
         self.ir_sub = rospy.Subscriber(topic, Range, self.ir_callback)

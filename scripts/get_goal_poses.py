@@ -43,7 +43,7 @@ class PoseCalculator():
         self.pub_rate = rospy.Rate(params['rate'])
 
     def subscribe(self):
-        topic = "object_tracker/"+self.limb+"/centroid"
+        topic = "object_tracker/blob_info"
         self.centroid_sub = rospy.Subscriber(topic, BlobInfoArray, self.centroid_callback)
         self.pc_sub = rospy.Subscriber("/camera/depth_registered/points", PointCloud2, self.pc_callback)
         self.info_sub = rospy.Subscriber("/camera/rgb/camera_info", CameraInfo, self.info_callback)

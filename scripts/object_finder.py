@@ -141,7 +141,7 @@ class ObjectFinder(CameraSubscriber):
         self.canny = None
 
     def publish(self, limb):
-        topic = "object_tracker/"+limb+"/centroid"
+        topic = "object_tracker/blob_info"
 
         self.handler_pub = rospy.Publisher(topic, BlobInfoArray)
         self.pub_rate = rospy.Rate(params['rate'])

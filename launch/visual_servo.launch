@@ -1,8 +1,13 @@
 <launch>
   <!--Parameters for the baxter_demos/object_tracker application based on Baxter's workspace-->
   <arg name="limb"     default="right"/>
-<node pkg="baxter_demos" name="visual_servo" type="visual_servo.py"
+
+  <param name="object_tracker/config_folder" value="$(find baxter_demos)/config/"/>
+
+  <node pkg="baxter_demos" name="visual_servo" type="visual_servo.py"
 args="--limb $(arg limb)" required="true">
+
+
     <!--speed determines how fast Baxter's arm moves in visual_servo-->
     <param name="servo_speed" value="0.0095"/>
 

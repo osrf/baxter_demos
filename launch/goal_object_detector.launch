@@ -1,11 +1,12 @@
 <launch>
+  <!--1 or true if using kinect, 0 or false otherwise (default) -->
+  <arg name="kinect" default="0"/>
 
   <node pkg="nodelet" type="nodelet" name="cloud_nodelet"  args="manager" output="screen"  />
 
-    <!--TODO: options for kinect and asus -->
-  <!--include file="$(find baxter_demos)/launch/freenect_nodelet.launch"/-->
+  <include if="$(arg kinect)" file="$(find baxter_demos)/launch/freenect_nodelet.launch"/>
   
-  <!--include file="$(find baxter_demos)/launch/openni2_nodelet.launch"/-->
+  <include unless="$(arg kinect)" file="$(find baxter_demos)/launch/openni2_nodelet.launch"/>
 
   <node pkg="nodelet" type="nodelet" name="CloudSegmenter" args="load baxter_demos/CloudSegmenter cloud_nodelet" output="screen">
   </node>
