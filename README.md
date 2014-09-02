@@ -59,8 +59,7 @@ An unfinished/extremely broken attempt at 2D pick-and-place stacking.
 
 Tests the object_finder node on a set of pre-selected images. Press "Space" in the "Test Image" window to cycle through the test images. We expect to see the contour of the orange block in each window, though the segmentation is not perfect.
 
-`roslaunch baxter_demos object_visualize_test.launch`
-
+<!--
 ##Config files
 ar_calib.yaml
 base_camera_tf.yaml
@@ -68,4 +67,4 @@ baxter.urdf
 baxter.srdf
 object_finder_3d.yaml
 object_finder.yaml
-servo_to_object.yaml
+servo_to_object.yaml -->
