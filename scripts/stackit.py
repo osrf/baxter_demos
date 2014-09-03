@@ -70,16 +70,22 @@ class ObjectManager:
         
     def publish_all(self):
         for obj in self.collision_objects:
-            obj.operation = self.id_operations[obj.id]
-            self.pub.publish(obj)
+            self.publish(obj)
 
     def publish_attached(self, attached_obj, side):
         attached_obj.operation = CollisionObject.ADD
         msg = AttachedCollisionObject()
         msg.object = attached_obj
         msg.link_name = side+"_gripper" 
-        msg.touch_links = [side+"_gripper_base", side+"_hand_camera", side+"_hand_range", "octomap"]
+        touch_links = [side+"_gripper", side+"_gripper_base", side+"_hand_camera", side+"_hand_range", "octomap"]
         self.attached_pub.publish(msg)
+
+    def remove_known_objects(self):
+        rate = rospy.Rate(1)
+        for obj in self.collision_objects:
+            obj.operation = CollisionObject.REMOVE
+            self.publish(obj)
+            rate.sleep()
 
 
     def __init__(self):
@@ -164,6 +170,7 @@ def main():
     cv2.namedWindow(processed_win)
     #cv2.namedWindow(raw_win)
 
+    rospy.on_shutdown(obj_manager.remove_known_objects)
 
     for obj in objects:
         obj_pose = obj.primitive_poses[0]
@@ -173,7 +180,7 @@ def main():
 
         print "Got pose:", obj.primitive_poses[0]
         pose = projectPose(obj.primitive_poses[0])
-        pose = incrementPoseMsgZ(pose, object_height*2)
+        pose = incrementPoseMsgZ(pose, object_height*1.7)
         print "Modified pose:", pose
         #if obj.id in obj_manager.id_operations:
         #    obj_manager.id_operations[obj.id] = CollisionObject.REMOVE 
@@ -226,11 +233,12 @@ def main():
 
             print "Adding attached message"
             #Add attached message
-            obj.primitive_poses[0] = incrementPoseMsgZ(obj.primitive_poses[0], -2*object_height) #this is in the base frame...?
-            #obj_manager.publish_attached(obj, limb)
-            group.attach_object(obj.id, limb+"_gripper")
-            # Disable collisions between gripper and octomap (risky business)
+            #obj.primitive_poses[0] = incrementPoseMsgZ(obj.primitive_poses[0], *object_height) #this is in the base frame...?
+            obj_manager.publish_attached(obj, limb)
+            #touch_links = [limb+"_gripper", limb+"_gripper_base", limb+"_hand_camera", limb+"_hand_range"]
+            #group.attach_object(obj.id, limb+"_gripper", touch_links = touch_links)
             # Carefully rise away from the object before we plan another path
+            pose = incrementPoseMsgZ(pose, 2*object_height) # test this
             ik_command.service_request_pose(iksvc, pose, limb, blocking = True)
             
         else:
@@ -250,25 +258,21 @@ def main():
             #rospy.sleep(3)
             group.go(wait=True)
             gripper_if.open(block=True)
-            #obj.operation = CollisionObject.REMOVE
-            #obj_manager.publish(obj)
             group.detach_object(obj.id)
             # Carefully rise away from the object before we plan another path
-            pose = incrementPoseMsgZ(stack_pose, object_height)
+            pose = incrementPoseMsgZ(stack_pose, 2*object_height)
             ik_command.service_request_pose(iksvc, pose, limb, blocking = True)
             
         
+        obj.operation = CollisionObject.REMOVE
+        obj_manager.publish(obj)
         # Get the next stack pose
-        stack_pose = incrementPoseMsgZ(stack_pose, object_height)
+        stack_pose = incrementPoseMsgZ(stack_pose, object_height*3/4)
 
         """if obj.id in obj_manager.id_operations:
             obj_manager.id_operations[obj.id] = CollisionObject.ADD
 
         obj_manager.publish()"""
-    for obj in objects:
-        obj.operation = CollisionObject.REMOVE
-        obj_manager.publish(obj)
-
 
 if __name__ == "__main__":
     main()

@@ -91,8 +91,6 @@ void CloudSegmenter::onInit(){
     segmented = false;
     published_goals = false;
 
-    //cloud_mutex.unlock();
-
     cloud_sub = n.subscribe("/camera/depth_registered/points", 100,
                                       &CloudSegmenter::points_callback, this);
 
@@ -105,6 +103,7 @@ void CloudSegmenter::onInit(){
     goal_pub = n.advertise<geometry_msgs::PoseArray>("/object_tracker/right/goal_poses", 100);
 
     //cloud_pub = n.advertise<sensor_msgs::PointCloud2>("/modified_points", 200);
+    cloud_pub = n.advertise<sensor_msgs::PointCloud2>("/object_tracker/segmented_cloud", 1000);
 
     object_sequence = 0;
     cout << "finished initialization" << endl;
@@ -128,10 +127,6 @@ moveit_msgs::CollisionObject CloudSegmenter::constructCollisionObject(geometry_m
     primitive.dimensions[2] = object_side;
     new_obj.primitives.push_back(primitive);
     new_obj.primitive_poses.push_back(pose);
-
-    /*shape_msgs::Mesh mesh;
-    new_obj.meshes.push_back(mesh);
-    new_obj.mesh_poses.push_back(pose);*/
 
     new_obj.operation = moveit_msgs::CollisionObject::ADD;
 
@@ -361,6 +356,13 @@ void CloudSegmenter:: publish_poses(){
     geometry_msgs::PoseArray pose_msg;
     pose_msg.poses = goal_poses;
     goal_pub.publish(pose_msg);
+    if(segmented){
+        //tf_listener.waitForTransform(frame_id, "/base", cloud_msg.header.stamp, ros::Duration(4.0));
+        //pcl_ros::transformPointCloud("/base", cloud_msg, cloud_msg, tf_listener);
+        cloud_msg.header.frame_id = frame_id;
+        cloud_msg.header.stamp = ros::Time::now();
+        cloud_pub.publish(cloud_msg);
+    }
 
     /*if(has_cloud){
         if(!goal_poses.empty()){
@@ -443,7 +445,6 @@ void CloudSegmenter:: segmentation(){
     /* Segmentation code from:
        http://pointclouds.org/documentation/tutorials/region_growing_rgb_segmentation.php*/
 
-    //Segmentation is a major bottleneck
     pcl::search::Search <pcl::PointXYZRGB>::Ptr tree =
                         boost::shared_ptr<pcl::search::Search
                         <pcl::PointXYZRGB> >
@@ -467,7 +468,7 @@ void CloudSegmenter:: segmentation(){
     reg.extract (clusters);
    
     //cloud_mutex.lock(); 
-    colored_cloud = reg.getColoredCloud();
+    colored_cloud = PointColorCloud(*reg.getColoredCloud()).makeShared();
     //cloud_mutex.unlock(); 
 
     // Select the correct color clouds from the segmentation
@@ -522,7 +523,7 @@ void CloudSegmenter:: segmentation(){
     cout<< "Modified point cloud has " << obstacle_points.size() << " points" << endl;
 
     obstacle_cloud = obstacle_points.makeShared();*/
-    //pcl::toROSMsg(*obstacle_cloud, cloud_msg);
+    pcl::toROSMsg(*colored_cloud, cloud_msg);
 
     cout << "Clusters found: " << cloud_ptrs.size() << endl;
     if(cloud_ptrs.empty()){

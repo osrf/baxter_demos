@@ -24,7 +24,7 @@ open: 4
 open_max: 15
 
 # star
-response: 20
+response: 18
 response_max: 90
 projected: 7
 projected_max: 30

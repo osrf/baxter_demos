@@ -1,6 +1,6 @@
 <launch>
     <node pkg="baxter_demos" name="color_picker" type="ColorPicker"
-        required="true" output="screen">
+        required="true" output="screen" launch-prefix="gdb -ex run --args" >
     </node>
     <rosparam command="load" file="$(find baxter_demos)/config/object_finder_3d.yaml"/>
 </launch>

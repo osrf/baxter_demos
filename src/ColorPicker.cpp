@@ -23,10 +23,13 @@ class ColorPicker{
 private:
     ros::NodeHandle n;
     ros::Subscriber cloud_sub;
+    ros::Subscriber color_sub;
     ros::Publisher pub;
     bool has_cloud;
     bool has_desired_color;
+    bool segmented;
     PointColorCloud::Ptr cloud;
+    PointColorCloud::Ptr segmented_cloud;
     pcl::IndicesPtr indices;
     pcl::PointRGB desired_color;
 
@@ -37,27 +40,53 @@ public:
         return has_cloud;
     }
 
+    bool hasDesiredColor(){
+        return has_desired_color;
+    }
+
+    bool wasSegmented(){
+        return segmented;
+    }
+
     PointColorCloud::Ptr getCloud(){
         return cloud;
+    }
+
+    PointColorCloud::Ptr getSegmentedCloud(){
+        return segmented_cloud;
     }
 
     ColorPicker(){
         cloud_sub = n.subscribe("/camera/depth_registered/points", 1000,
                                    &ColorPicker::callback, this);
+        color_sub = n.subscribe("/object_tracker/segmented_cloud", 1000,
+                                   &ColorPicker::segmented_callback, this);
+
         pub = n.advertise<geometry_msgs::Point>("/object_tracker/picked_color", 1000);
         has_cloud = false;
+        segmented = false;
+        has_desired_color = false;
         cloud_mutex.unlock();
         cloud = PointColorCloud::Ptr( new PointColorCloud());
+        segmented_cloud = PointColorCloud::Ptr( new PointColorCloud());
     }
+
+    void segmented_callback(const sensor_msgs::PointCloud2::ConstPtr& msg){
+ 
+        pcl::PCLPointCloud2 pcl_pc;
+        pcl_conversions::toPCL(*msg, pcl_pc);
+        pcl::fromPCLPointCloud2(pcl_pc, *segmented_cloud);
+       
+        segmented = true;
+    }
+
     
     void callback(const sensor_msgs::PointCloud2::ConstPtr& msg){
         //Update the class cloud ptr
-        //TODO: downsampling
         indices = pcl::IndicesPtr( new vector<int>() );
 
         pcl::PCLPointCloud2 pcl_pc;
         pcl_conversions::toPCL(*msg, pcl_pc);
-        //delete cloud; // necessary?
         cloud_mutex.lock();
         pcl::fromPCLPointCloud2(pcl_pc, *cloud);
         pcl::removeNaNFromPointCloud(*cloud, *cloud, *indices);
@@ -115,14 +144,13 @@ int main(int argc, char** argv){
 
     ros::init(argc, argv, "color_picker");
 
-    //boost::shared_ptr<pcl::visualization::PCLVisualizer> cloud_viewer( new pcl::visualization::PCLVisualizer("Cloud viewer"));
-
     ColorPicker color_picker;
     pcl::visualization::CloudViewer cloud_viewer("Cloud viewer");
     cloud_viewer.registerPointPickingCallback(
                 &ColorPicker::getClickedPoint, color_picker, (void*) NULL );
 
     ros::Rate loop_rate(100);
+
     while(ros::ok && !cloud_viewer.wasStopped()){
         ros::spinOnce();
         loop_rate.sleep();
@@ -130,6 +158,7 @@ int main(int argc, char** argv){
             break;
         }
     }
+
     color_picker.cloud_mutex.lock();
     PointColorCloud::Ptr cloud = color_picker.getCloud(); 
     
@@ -137,7 +166,11 @@ int main(int argc, char** argv){
 
     while(ros::ok && !cloud_viewer.wasStopped()){
         ros::spinOnce();
-        cloud_viewer.showCloud(cloud);
+        if(color_picker.wasSegmented()){
+            cloud_viewer.showCloud(color_picker.getSegmentedCloud());
+        } else {
+            cloud_viewer.showCloud(cloud);
+        }
         loop_rate.sleep();
     }
 }
