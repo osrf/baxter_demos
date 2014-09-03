@@ -1,4 +1,5 @@
 #baxter_demos
+Demos for the Baxter Research Robot written by Jackie Kay at OSRF during Summer 2014. Some demos require a 3D camera, others do not.
 
 ##Applications
 
@@ -22,7 +23,7 @@ roslaunch point_input_trajectory.launch limb:=[left/right] img_folder:=[path to 
 
 This demo will give you instructions on Baxter’s head screen. Move Baxter’s arm to a start configuration using the wrist sensor, then press the round cuff button. Then move Baxter’s arm to an end configuration and press the cuff button again. Baxter will repeatedly move between those two positions. Requires the Joint Trajectory Action Server (see below).
 
-####2D Object Segmentation/Manipulation
+####2D Perception and Manipulation
 ```
 roslaunch baxter_demos object_finder.launch topic:=[topic name] limb:=[left/right] method:=[color/star/watershed]
 ```
@@ -35,7 +36,7 @@ roslaunch baxter_demos object_tracker.py limb:=[left/right] method:=[color/star/
 
 A simple object pick and place demo. Make sure Baxter’s hand camera can see the desired object and click on the object in the image window. Then use the cuff buttons to give Baxter a start and end configuration (make sure the hand camera can see the object in the start configuration). The robot will then use object_finder.launch as well as its rangefinder and a visual servoing node to position the gripper over the object, grasp it, move to the end configuration, and drop it.
 
-####3D Camera Calibration
+####3D Camera-Robot Extrinsic Calibration
 ```
 roslaunch baxter_demos track_ar_tag.launch
 ```
@@ -54,7 +55,7 @@ roslaunch baxter_demos baxter_osrf.launch
 
 Publishes the Baxter URDF with the camera box modification and the saved static transform between the base and camera frames that results from get_ar_calib.py. This is a startup script meant for use with OSRF’s Baxter, so I don’t suggest using it for another robot unless you modify it first.
 
-####3D Camera Segmentation
+####3D Perception
 ```
 roslaunch baxter_demos goal_object_detector.launch kinect:=[true/false]
 ```
