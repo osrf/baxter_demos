@@ -1,0 +1,17 @@
+<launch>
+
+  <arg name="limb"       default="right"/>
+  <arg name="method"     default="color"/>
+  <arg name="folder"     default="$(find baxter_demos)/assets/"/>
+  <arg name="topic"      default="/camera/$(arg limb)_hand_camera/image"/>
+  <arg name="pick_point" default="false"/>
+
+  <param name="robot_description" textfile="$(find baxter_description)/urdf/baxter.urdf"/>
+
+  <param name="object_tracker/config_folder" value="$(find baxter_demos)/config/"/>
+
+  <node pkg="baxter_demos" name="object_finder" type="object_finder.py"
+  args="--limb $(arg limb) --method $(arg method)" required="true">
+  </node>
+
+</launch>

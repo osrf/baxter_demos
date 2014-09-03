@@ -15,7 +15,6 @@ User needs to manually run object_finder and subscribe to topic name specified h
 global centroid, axis
 centroid = None
 axis = None
-img_path = "/home/jackie/ros_ws/src/baxter_demos/tests/assets/block_imgs/"
 topic_name = "object_finder_test"
 
 def main():
@@ -24,7 +23,7 @@ def main():
                                      description=main.__doc__)
     required = parser.add_argument_group('required arguments')
     required.add_argument(
-        '-f', '--folder', required=False,
+        '-f', '--folder', required=True,
         help='folder containing asset files'
     )
 
