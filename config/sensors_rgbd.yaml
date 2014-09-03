@@ -1,0 +1,11 @@
+# sensors_rgbd: added to connect 3D camera with MoveIt.
+sensors:
+ - sensor_plugin: occupancy_map_monitor/PointCloudOctomapUpdater
+   point_cloud_topic: /camera/depth_registered/points
+   #point_cloud_topic: /modified_points
+   filtered_cloud_topic: /output_cloud
+   padding_offset: 0.05
+   padding_scale: 1
+   max_range: 5.0
+   frame_subsample: 1
+   point_subsample: 1
