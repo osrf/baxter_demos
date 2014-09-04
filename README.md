@@ -1,6 +1,26 @@
 #baxter_demos
 Demos for the Baxter Research Robot written by Jackie Kay at OSRF during Summer 2014. Some demos require a 3D camera, others do not.
 
+##Prerequisites
+
+Install dependencies (assumes that you have the repo cloned into your ROS_PACKAGE_PATH):
+
+```
+rosdep install baxter_demos
+```
+
+Also clone `baxter_pykdl` into your workspace:
+
+```
+git clone https://github.com/rethink-kmaroney/baxter_pykdl.git
+```
+
+And install its dependencies:
+
+```
+rosdep install baxter_pykdl
+```
+
 ##Applications
 
 ####Keyboard teleop demos
