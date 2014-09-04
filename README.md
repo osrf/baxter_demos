@@ -9,6 +9,18 @@ Install dependencies (assumes that you have the repo cloned into your ROS_PACKAG
 rosdep install baxter_demos
 ```
 
+Also clone `baxter_pykdl` into your workspace:
+
+```
+git clone https://github.com/rethink-kmaroney/baxter_pykdl.git
+```
+
+And install its dependencies:
+
+```
+rosdep install baxter_pykdl
+```
+
 ##Applications
 
 ####Keyboard teleop demos
