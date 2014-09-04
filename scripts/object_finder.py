@@ -18,7 +18,6 @@ from baxter_interface import CHECK_VERSION
 import common
 import cv, cv2, cv_bridge
 import numpy
-from scipy.ndimage import label
 import tf
 
 from sensor_msgs.msg import Image
@@ -319,7 +318,9 @@ class ObjectFinder(CameraSubscriber):
         self.color = avg
         return self.colorDetect(img)
 
-    def watershedDetect(self, img):
+#TODO: integrate watershed detection with other stuff
+"""    def watershedDetect(self, img):
+        from scipy.ndimage import label
         # Do some preprocessing
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         blur_radius = cv2.getTrackbarPos("blur", processed_win)
@@ -360,7 +361,7 @@ class ObjectFinder(CameraSubscriber):
         result = markers
         result[markers == -1] = 0
         result = result.astype(numpy.uint8)
-        return result
+        return result"""
 
     def edgeDetect(self, img):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)

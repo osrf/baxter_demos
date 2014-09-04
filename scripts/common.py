@@ -103,7 +103,6 @@ class ButtonListener:
     def getButtonPressTraj(self, limb, limbInterface, traj):
         #Get points from user
         jointdict = limbInterface.joint_angles()
-        print jointdict
         return [jointdict[limb+"_"+name] for name in traj.jointnames]
 
     def getButtonPress(self, limbInterface):
