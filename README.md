@@ -45,10 +45,22 @@ This demo will give you instructions on Baxter’s head screen. Move Baxter’s 
 
 ####2D Perception and Manipulation
 ```
+roslaunch baxter_demos object_finder.launch
+```
+
+Or you can supply options:
+
+```
 roslaunch baxter_demos object_finder.launch topic:=[topic name] limb:=[left/right] method:=[color/star/watershed]
 ```
 
 Run a standalone 2D image segmentation routine. The default behavior uses the image feed from Baxter’s right hand camera. It requires you to click on a point in the scene and then uses color segmentation to identify objects of that same color. Three windows will pop up once segmentation begins: the raw image feed, the thresholded image resulting from segmentation processing, and the contours in the thresholded image. The thresholded image window also has sliders that adjust various segmentation parameters. The raw image feed displays the centroid, bounding box, and dominant axis in green for each contour. The other working option for segmentation method is Star Classifier Detection, which uses corner detection to find key points in the image, gets the color of those points and then color segments the image. Make sure the camera topic displays the scene you want to segment before starting object_finder with this segmentation method. object_finder publishes the centroid and dominant axis of each detected object to `/object_tracker/blob_info`.
+
+```
+roslaunch baxter_demos object_tracker.py
+```
+
+Or you can supply options:
 
 ```
 roslaunch baxter_demos object_tracker.py limb:=[left/right] method:=[color/star/watershed] folder:=[path to asset folder]
