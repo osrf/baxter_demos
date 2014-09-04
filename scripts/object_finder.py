@@ -318,51 +318,51 @@ class ObjectFinder(CameraSubscriber):
         self.color = avg
         return self.colorDetect(img)
 
-#TODO: integrate watershed detection with other stuff
-"""    def watershedDetect(self, img):
-        from scipy.ndimage import label
-        # Do some preprocessing
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        blur_radius = cv2.getTrackbarPos("blur", processed_win)
-        blur_radius = blur_radius*2-1
-        if blur_radius > 0:
-            gray = cv2.GaussianBlur(gray, (blur_radius, blur_radius), 0)
-        # Blur/diffusion filter (?)
-        # Get initial markers
-
-        ret, markers = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV +
-                                                   cv2.THRESH_OTSU)
-        kernel_size = 5
-        kernel = numpy.ones((kernel_size,kernel_size),numpy.uint8)
-
-        markers = cv2.morphologyEx(markers, cv2.MORPH_OPEN,kernel, iterations = 3)
-
-        border = cv2.dilate(markers, kernel,iterations=3)
-        border = border - cv2.erode(border, kernel, iterations=1)
-        retval, border = cv2.threshold(border, 0, 255, cv2.THRESH_OTSU)
-        border = cv2.morphologyEx(border, cv2.MORPH_CLOSE,kernel, iterations = 3)
-
-        dt = cv2.distanceTransform(markers, 2, 3)
-        dt = ((dt - dt.min()) / (dt.max() - dt.min()) * 255).astype(numpy.uint8)
-        _, dt = cv2.threshold(dt, 180, 255, cv2.THRESH_BINARY)
-        lbl, ncc = label(dt)
-        lbl = lbl * (255/ncc)
-        lbl[border == 255] = 255
-
-        # segment
-        markers = lbl.astype(numpy.int32)
-        if img.dtype != numpy.uint8:
-            img = img.astype(numpy.uint8)
-        if img.shape[2] > 3:
-            img = img[:, :, 0:3]
-        cv2.watershed(img, markers)
-        # Fill image
-
-        result = markers
-        result[markers == -1] = 0
-        result = result.astype(numpy.uint8)
-        return result"""
-
+        #TODO: integrate watershed detection with other stuff
+#    def watershedDetect(self, img):
+#        from scipy.ndimage import label
+#        # Do some preprocessing
+#        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+#        blur_radius = cv2.getTrackbarPos("blur", processed_win)
+#        blur_radius = blur_radius*2-1
+#        if blur_radius > 0:
+#            gray = cv2.GaussianBlur(gray, (blur_radius, blur_radius), 0)
+#        # Blur/diffusion filter (?)
+#        # Get initial markers
+#
+#        ret, markers = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV +
+#                                                   cv2.THRESH_OTSU)
+#        kernel_size = 5
+#        kernel = numpy.ones((kernel_size,kernel_size),numpy.uint8)
+#
+#        markers = cv2.morphologyEx(markers, cv2.MORPH_OPEN,kernel, iterations = 3)
+#
+#        border = cv2.dilate(markers, kernel,iterations=3)
+#        border = border - cv2.erode(border, kernel, iterations=1)
+#        retval, border = cv2.threshold(border, 0, 255, cv2.THRESH_OTSU)
+#        border = cv2.morphologyEx(border, cv2.MORPH_CLOSE,kernel, iterations = 3)
+#
+#        dt = cv2.distanceTransform(markers, 2, 3)
+#        dt = ((dt - dt.min()) / (dt.max() - dt.min()) * 255).astype(numpy.uint8)
+#        _, dt = cv2.threshold(dt, 180, 255, cv2.THRESH_BINARY)
+#        lbl, ncc = label(dt)
+#        lbl = lbl * (255/ncc)
+#        lbl[border == 255] = 255
+#
+#        # segment
+#        markers = lbl.astype(numpy.int32)
+#        if img.dtype != numpy.uint8:
+#            img = img.astype(numpy.uint8)
+#        if img.shape[2] > 3:
+#            img = img[:, :, 0:3]
+#        cv2.watershed(img, markers)
+#        # Fill image
+#
+#        result = markers
+#        result[markers == -1] = 0
+#        result = result.astype(numpy.uint8)
+#        return result
+#
     def edgeDetect(self, img):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         thresh1 = cv2.getTrackbarPos('threshold 1', edge_win)
