@@ -35,17 +35,10 @@ class DepthEstimator:
         self.limb = limb
         self.limb_iface = baxter_interface.Limb(limb)
 
-        self.ir_reading = 0.4 # Derpy default value
+        self.ir_reading = 0.4
         self.camera_model = None
         self.goal_poses = []
         self.done = False
-
-        """node = "servo_to_object/"
-        self.min_ir_depth = rospy.get_param(node+"min_ir_depth")
-        self.object_height = rospy.get_param("/estimate_depth/object_height")
-        self.inc = float(rospy.get_param(node+"servo_speed"))
-        self.camera_x = rospy.get_param(node+"camera_x")
-        self.camera_y = rospy.get_param(node+"camera_y")"""
 
         self.inc = params['servo_speed']
         self.min_ir_depth = params['min_ir_depth']
@@ -54,12 +47,12 @@ class DepthEstimator:
         self.object_height = params['object_height']
         
     def publish(self, rate=100):
-        self.handler_pub = rospy.Publisher("object_tracker/"+self.limb+"/goal_poses", PoseArray)
+        self.handler_pub = rospy.Publisher("/object_tracker/"+self.limb+"/goal_poses", PoseArray)
         self.pub_rate = rospy.Rate(rate)
 
 
     def subscribe(self):
-        topic = "object_tracker/blob_info"
+        topic = "/object_tracker/blob_info"
         self.centroid_sub = rospy.Subscriber(topic, BlobInfoArray, self.centroid_callback)
         topic = "/robot/range/"+self.limb+"_hand_range/state"
         self.ir_sub = rospy.Subscriber(topic, Range, self.ir_callback)

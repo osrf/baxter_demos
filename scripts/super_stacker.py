@@ -19,15 +19,19 @@ class DepthCaller:
     def __init__(self, limb):
         self.done = False
         self.limb = limb
-        self.depth_handler = rospy.Subscriber("object_tracker/"+limb+"/goal_poses",
+        self.depth_handler = rospy.Subscriber("/object_tracker/"+limb+"/goal_poses",
                                               PoseArray, self.depth_callback)
+        self.object_poses = []
+        self.object_pose_msgs = []
+
 
     def depth_callback(self, data):
         print "Getting object poses"
         self.object_poses = []
         self.object_pose_msgs = []
         for pose in data.poses:
-            p = [pose.position.x, pose.position.y, pose.position.z]+[pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]
+            p = [pose.position.x, pose.position.y, pose.position.z]+[pose.orientation.x,
+                 pose.orientation.y, pose.orientation.z, pose.orientation.w]
             self.object_poses.append(p)
             self.object_pose_msgs.append(pose)
             print p
@@ -87,7 +91,7 @@ def main():
     rate = rospy.Rate(100)
 
     # Get goal poses of each object in the scene
-    dc = DepthCaller(limb, iksvc)
+    dc = DepthCaller(limb)
 
     # Subscribe to estimate_depth
     # Move to pose published by estimate_depth
@@ -95,12 +99,9 @@ def main():
         rate.sleep()
         #pass
     
-    print "Start visual servoing to first object"
     
     # Subscribe to object_finder and start visual servoing/grasping
-    vc = VisualCommand(iksvc, limb)
-    vc.subscribe()
-
+   
     # The stack pose is the pose of the smallest object with a z-offset
     # accounting for the height of the object (this assumption makes
     # it really important that the segmentation is accurate)
@@ -109,9 +110,11 @@ def main():
     #stack_pose = incrementPoseZ(stack_pose, object_height)
     #dc.object_poses.pop(len(dc.object_poses)-1)
 
-    for pose in dc.object_poses[:len(dc.object_poses)]:
+    for pose in dc.object_poses:
 
         ik_command.service_request(iksvc, pose, limb, blocking=True)
+        vc = VisualCommand(iksvc, limb)
+        vc.subscribe()
 
         while (not vc.done) and (not rospy.is_shutdown()):
             rate.sleep()
