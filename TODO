@@ -1,0 +1,10 @@
+Maintenance
+===========
++ Fix static transform publisher
++ Connect watershed segmentation and fix scipy dependency
++ Parameter saving in object_finder
++ Write demo selection menu with navigator wheel and head screen displays
+
+Future demo ideas
+=================
++ Roboceptionist
