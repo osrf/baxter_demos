@@ -1,5 +1,5 @@
 #baxter_demos
-Demos for the Baxter Research Robot written by Jackie Kay at OSRF during Summer 2014. Some demos require a 3D camera, others do not.
+Demos for the Baxter Research Robot written by Jackie Kay at OSRF during Summer 2014.
 
 ##Prerequisites
 
@@ -20,6 +20,20 @@ And install its dependencies:
 ```
 rosdep install baxter_pykdl
 ```
+
+###3D Vision and PCL
+To run 3D vision demos (get_ar_calib, goal_object_detector, stackit) you need a 3D camera such as a Kinect, Primesense or Asus Xtion. To run goal_object_detector and stackit, you need to install PCL (Point Cloud Library) from source (version 1.7.2). This is because the code currently uses moment of inertia estimation features that are not available in PCL 1.7.1, which is the version currently available to install from debs in Ubuntu. However, PCL 1.7.2 relies on a higher version of Boost than is used by ROS, and installing the right Boost for the latest PCL using the package manager may wreak havoc on your ROS installation.
+
+PCL installation instructions (at your own risk):
++ Download Boost 1.47.0 source from http://www.boost.org/users/history/version_1_47_0.html 
++ Build Boost 1.47.0 using the boostrap.sh script.
++ Clone the PCL 1.7.2 source from https://github.com/PointCloudLibrary/pcl
++ At the top of $(pcl)/cmake/pcl_find_boost.cmake, add the line "set(BOOST_ROOT <boost 1.47.0 dir>)", replacing <boost 1.47.0 dir> with the path to Boost 1.47.0.
++ (optional) In the PCL directory, make a build directory and call ccmake in that directory to configure your install. You could set the build type to "release" instead of debug, which will compile PCL with -O3 optimzations, but it will get rid of debug symbols.
++ Make and install PCL.
++ When you catkin_make the workspace with baxter_demos, it should find PCL automatically and build the 3D vision demos.
+
+The planned fix for this issue is integrating moment of inertia estimation code that is not dependent on Boost and compatible with PCL 1.7.1.
 
 ##Applications
 
@@ -66,7 +80,7 @@ Or you can supply options:
 roslaunch baxter_demos object_tracker.py limb:=[left/right] method:=[color/star/watershed] folder:=[path to asset folder]
 ```
 
-A simple object pick and place demo. Make sure Baxter’s hand camera can see the desired object and click on the object in the image window. Then use the cuff buttons to give Baxter a start and end configuration (make sure the hand camera can see the object in the start configuration). The robot will then use object_finder.launch as well as its rangefinder and a visual servoing node to position the gripper over the object, grasp it, move to the end configuration, and drop it.
+A simple object pick and place demo. Make sure Baxter’s hand camera can see the desired object and click on the object in the image window. Then use the cuff buttons to give Baxter a start and end configuration (make sure the hand camera can see the object in the start configuration). The robot will then use object_finder.launch as well as its rangefinder and visual servoing logic to position the gripper over the object, grasp it, move to the end configuration, and drop it.
 
 ####3D Camera-Robot Extrinsic Calibration
 ```
