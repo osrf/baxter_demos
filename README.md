@@ -93,7 +93,7 @@ Run a node from ar_track_alvar to give the pose of an AR tag in the camera scene
 roslaunch baxter_demos get_ar_calib.py
 ```
 
-Runs track_ar_tag and an additional node to calculate the transformation between Baxter’s base frame and the camera. To get an accurate extrinsic calibration, you need to carefully measure the transformation between the AR marker and one of Baxter’s coordinate frames and edit `$(baxter_demos)/config/ar_calib.yaml` with appropriate values.
+Runs track_ar_tag and an additional node to calculate the transformation between Baxter’s base frame and the camera. To get an accurate extrinsic calibration, you need to carefully measure the transformation between the AR marker and one of Baxter’s coordinate frames and edit `$(baxter_demos)/config/ar_calib.yaml` with appropriate values. get_ar_calib saves the transformation to config/base_camera_tf.yaml, which gets passed to a transform publisher launched by baxter_osrf.launch.
 
 ```
 roslaunch baxter_demos baxter_osrf.launch
