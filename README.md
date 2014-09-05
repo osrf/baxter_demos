@@ -33,7 +33,7 @@ PCL installation instructions (at your own risk):
 + Make and install PCL.
 + When you catkin_make the workspace with baxter_demos, it should find PCL automatically and build the 3D vision demos.
 
-The planned fix for this issue is integrating moment of inertia estimation code that is not dependent on Boost and compatible with PCL 1.7.1.
+The planned fix for this issue is integrating moment of inertia estimation code that is not dependent on Boost and make baxter_demos reliant on PCL 1.7.1.
 
 ##Applications
 

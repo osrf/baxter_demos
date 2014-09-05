@@ -9,7 +9,6 @@ from math import pi
 from geometry_msgs.msg import Pose, Point, Quaternion
 from visualization_msgs.msg import Marker, MarkerArray
 import visualization_msgs.msg
-#from ar_track_alvar import AlvarMarkers
 
 # TODO: add averaging/filtering, auto-add to param server or urdf or file
 
@@ -61,14 +60,11 @@ def create_marker(ns, id_num, shape_type, pose, color, scale):
     marker.scale.x, marker.scale.y, marker.scale.z = scale
     return marker
 
-#markernum = '2'
 markernum = params['markernum']
 measured_translation = params['measured_translation']
 measured_rot = numpy.array(params['measured_rot']).reshape((3,3))
 frame = params['frame']
 squaredims = tuple(params['squaredims'])
-#measured_translation = [0.06991+0.01036+0.0225, -0.0569, -0.0055]
-#measured_rot = numpy.array( [[-1, 0, 0], [0, 0, -1], [0, -1, 0]] )
 
 rospy.init_node("get_ar_calib")
 
@@ -81,7 +77,6 @@ rate = rospy.Rate(100)
 
 reference_marker_trans = numpy.dot(numpy.linalg.inv(measured_rot),
                                -numpy.array(measured_translation).reshape((3, 1))).flatten()
-#reference_marker_trans = numpy.array(measured_translation)
 print reference_marker_trans
 # Calculate transform from forearm to marker
 reference_marker = tf.transformations.compose_matrix(
@@ -123,14 +118,17 @@ while not rospy.is_shutdown():
     marker_pub.publish(msg)
     rate.sleep()
 
-
 print "Writing transform to yaml file"
 # Write to yaml file
 f = open(config_folder+"/base_camera_tf.yaml", 'w')
-lines = ['base_camera_trans: ', 'base_camera_rot: ']
+lines = ['trans: [', 'rot: [']
 for elem in trans:
     lines[0] += str(elem) + ', '
+lines[0] += ']\n'
 for elem in rot:
     lines[1] += str(elem) + ', '
+lines[1] += ']\n'
+lines.append('parent: /base\n')
+lines.append('child: /camera_link\n')
 f.writelines(lines)
 f.close()

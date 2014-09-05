@@ -1,0 +1,5 @@
+scale_factor: 2.0
+min_neighbors: 5
+path: 'assets/selfies/'
+joint_names: ['right_e0', 'right_e1', 'right_s0', 'right_s1', 'right_w0', 'right_w1', 'right_w2']
+joint_positions: [1.1451166568481446, 1.362941928479004, 0.3880971388916016, -0.4736165677185059, 0.8666991441650391, 2.0942672682678225, -1.491029324121094]
