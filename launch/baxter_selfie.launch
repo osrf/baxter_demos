@@ -1,0 +1,6 @@
+<launch>
+    <arg name="limb" default="right"/>
+    <param name="baxter_demos_folder" value="$(find baxter_demos)/"/>
+
+    <node pkg="baxter_demos" name="baxter_selfie" type="baxter_selfie.py" args="--limb $(arg limb)"/>
+</launch>
